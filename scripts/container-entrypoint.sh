@@ -17,13 +17,14 @@ set -euo pipefail
 ROLE="${ROLE:?ROLE env var must be set to coord|research|verify|analyst}"
 
 case "$ROLE" in
-  coord)    AXL_API_PORT="${AXL_API_PORT:-9002}" ;;
+  coord)    AXL_API_PORT="${AXL_API_PORT:-9002}"; AGENT_ENTRY="coordinator" ;;
   research) AXL_API_PORT="${AXL_API_PORT:-9012}" ;;
   verify)   AXL_API_PORT="${AXL_API_PORT:-9022}" ;;
   analyst)  AXL_API_PORT="${AXL_API_PORT:-9032}" ;;
   *) echo "invalid ROLE: $ROLE" >&2; exit 2 ;;
 esac
 export AXL_API_PORT
+AGENT_ENTRY="${AGENT_ENTRY:-$ROLE}"
 
 CONFIG_SRC="/app/scripts/node-config-${ROLE}.json"
 CONFIG_DST="/data/keys/node-config-${ROLE}.json"
@@ -46,7 +47,13 @@ if [ ! -f "$KEY_FILE" ]; then
 fi
 
 # Copy config into /data/keys and rewrite paths (keys/ → /data/keys/).
-sed "s|keys/|/data/keys/|g" "$CONFIG_SRC" > "$CONFIG_DST"
+# In Docker, workers must peer to the coord service name, not their own
+# localhost. Bare-metal startup still uses the checked-in 127.0.0.1 configs.
+if [ "$ROLE" = "coord" ]; then
+  sed "s|keys/|/data/keys/|g" "$CONFIG_SRC" > "$CONFIG_DST"
+else
+  sed -E "s|keys/|/data/keys/|g; s|tls://127.0.0.1:7001|tls://coord:7001|g; s|\"tcp_port\": 70[0-9]1|\"tcp_port\": 7001|g" "$CONFIG_SRC" > "$CONFIG_DST"
+fi
 
 echo "[entrypoint/${ROLE}] starting AXL node on :$AXL_API_PORT"
 axl-node -config "$CONFIG_DST" > "/data/logs/axl-${ROLE}.log" 2>&1 &
@@ -71,4 +78,4 @@ trap 'kill -TERM $AXL_PID 2>/dev/null || true' EXIT TERM INT
 
 # Hand off to the agent. exec so signals reach it directly.
 echo "[entrypoint/${ROLE}] launching agent"
-exec node "/app/dist/agents/${ROLE}.js"
+exec node "/app/dist/agents/${AGENT_ENTRY}.js"

@@ -36,6 +36,14 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 
+echo ">>> waiting for frontend proxy"
+for _ in $(seq 1 60); do
+  if curl -fsS http://127.0.0.1:5173/status >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
 curl -fsS http://127.0.0.1:5173/status >/dev/null
 
 echo ">>> verifying websocket task flow"

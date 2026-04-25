@@ -148,20 +148,27 @@ class Coordinator {
     this.hub.broadcast({ kind: "message", message: msg });
     this.hub.broadcast({ kind: "node_busy", node: to, busy: true, ts: msg.ts });
 
+    const key = `${taskId}:${to}`;
     const replyPromise = new Promise<ReturnPayload>((resolve, reject) => {
-      const key = `${taskId}:${to}`;
       const timeout = setTimeout(() => {
         this.pending.delete(key);
         reject(new Error(`Timeout waiting for ${to}`));
       }, timeoutMs);
       this.pending.set(key, { taskId, fromRole: to, resolve, reject, timeout });
     });
-
-    await this.axl.send(peerPubkey, msg);
+    replyPromise.catch(() => undefined);
 
     try {
+      await this.axl.send(peerPubkey, msg);
       const result = await replyPromise;
       return result;
+    } catch (err) {
+      const pending = this.pending.get(key);
+      if (pending) {
+        clearTimeout(pending.timeout);
+        this.pending.delete(key);
+      }
+      throw err;
     } finally {
       this.hub.broadcast({ kind: "node_busy", node: to, busy: false, ts: new Date().toISOString() });
     }
