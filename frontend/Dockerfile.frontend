@@ -1,0 +1,18 @@
+FROM node:20-bookworm-slim
+
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm install --no-audit --no-fund
+
+COPY tsconfig.json vite.config.ts index.html ./
+COPY public ./public
+COPY src ./src
+
+# Rewire the dev-server proxy to the coord container hostname.
+# (localhost → coord works because in compose, services resolve by name.)
+RUN sed -i 's|http://localhost:8080|http://coord:8080|g; s|ws://localhost:8080|ws://coord:8080|g' vite.config.ts
+
+EXPOSE 5173
+# `vite dev` gives us the proxy layer. For production you'd build and put
+# nginx in front, but for a hackathon demo this keeps things minimal.
+CMD ["npx", "vite", "dev", "--host", "0.0.0.0", "--port", "5173"]
