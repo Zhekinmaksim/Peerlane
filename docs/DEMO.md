@@ -18,7 +18,11 @@ A tight walkthrough for judges. Every beat earns its time.
 > The UI you're looking at is driven entirely by live messages flowing
 > through the mesh."
 
-[Point to the four node badges in the header. Pulse: "axl mesh · 4 nodes".]
+> "The simple version: this is not three backend functions called in sequence.
+> These are four node identities. Coord starts the task, then the workers pass
+> it directly to each other."
+
+[Point to the four node badges and the node identity list with short pubkeys.]
 
 ---
 
@@ -58,9 +62,21 @@ Point to the worker-to-worker rows: research → verify, then verify → analyst
 Click the **trace** footer to expand.
 
 > "Here's the proof this isn't a mock. Every row is one AXL message — from,
-> to, verb, timestamp. If you SSH into any of the four containers right now,
-> `curl localhost:9012/topology` gives you that node's own pubkey.
-> Worker handoffs are not routed through a central HTTP service."
+> to, verb, timestamp, and message id. The node pubkeys are visible on the
+> left and attached to the agent breakdown. Worker handoffs are not routed
+> through a central HTTP service."
+
+Click **copy proof**.
+
+> "This copies the route, node pubkeys, and message ids into a judge-friendly
+> verification log."
+
+If asked to prove it from the terminal:
+
+```bash
+docker compose logs --no-color coord research verify analyst | rg 'DISPATCH|FORWARD|RETURN|inbound'
+docker compose exec -T coord curl -fsS http://127.0.0.1:9002/topology
+```
 
 ---
 
@@ -92,6 +108,6 @@ Click **agent breakdown** to show each contribution.
 ## What to add if judges ask for depth
 
 - Show `ps aux | grep -E "axl-node|node dist"` — 8 distinct processes
-- Show `cat mesh-registry.json` — 4 distinct ed25519 pubkeys
+- Show `docker compose exec -T coord cat /data/registry/mesh-registry.json` — 4 distinct ed25519 pubkeys
 - Kill one worker process mid-run and show the coord surfacing a timeout in the UI
 - Swap in a different workflow (code review, source comparison) — same mesh, different prompts

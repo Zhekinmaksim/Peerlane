@@ -16,6 +16,10 @@ the workers hand the task to each other directly over AXL:
 
 `coord -> research -> verify -> analyst -> coord`
 
+In plain terms: Peerlane runs four independent AXL nodes. The coordinator
+only accepts the browser task and starts the first message; the workers pass
+the task directly to each other through AXL.
+
 The UI shows cross-node execution, the final synthesized result, and a
 trace of the peer-to-peer messages used to complete the task.
 
@@ -133,22 +137,44 @@ schemas, and [`docs/DEMO.md`](docs/DEMO.md) for the 90-second demo walkthrough.
 Three ways to confirm that no messages are being routed through a
 centralized broker:
 
+**0. Use the UI proof panel.** Open the trace drawer after a run. It shows:
+- the fixed route: `coord -> research -> verify -> analyst -> coord`
+- node pubkeys from the live registry
+- every message's `from`, `to`, `type`, `verb`, timestamp, and message id
+- a **copy proof** button for judges
+
 **1. Inspect the registry.** Each agent's AXL public key is independent
 and self-generated:
 ```bash
-cat mesh-registry.json
+docker compose exec -T coord cat /data/registry/mesh-registry.json
 ```
 
 **2. Inspect AXL's own `/topology` endpoint.** Each agent runs its own:
 ```bash
-curl -s http://127.0.0.1:9002/topology | jq .   # coord
-curl -s http://127.0.0.1:9012/topology | jq .   # research
+docker compose exec -T coord curl -fsS http://127.0.0.1:9002/topology
+docker compose exec -T research curl -fsS http://127.0.0.1:9012/topology
 ```
 Each returns a different `our_public_key`.
 
-**3. Watch the trace.** The UI's trace drawer shows the route:
-`coord -> research`, `research -> verify`, `verify -> analyst`,
-`analyst -> coord`.
+**3. Watch Docker logs for direct handoffs.** A successful run should show
+coord dispatching only to research, then worker-to-worker forwards:
+```bash
+docker compose logs --no-color coord research verify analyst | rg 'DISPATCH|FORWARD|RETURN|inbound'
+```
+
+Expected shape:
+```text
+coord      DISPATCH task=... to=research verb="gather_sources"
+research   FORWARD sent task=... to=verify verb="cross_reference"
+verify     FORWARD sent task=... to=analyst verb="synthesize"
+analyst    RETURN sent for task=...
+coord      inbound RETURN from=analyst task=...
+```
+
+For an end-to-end automated proof, run:
+```bash
+PEERLANE_MOCK_LLM=1 ./scripts/smoke-test.sh
+```
 
 ---
 

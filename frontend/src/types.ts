@@ -57,4 +57,6 @@ export interface LogEntry {
   dst: string;
   type: string;
   detail: string;
+  mid?: string;
+  parentMid?: string;
 }

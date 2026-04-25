@@ -56,6 +56,10 @@ function formatTs(iso: string): string {
   }
 }
 
+function shortKey(pubkey?: string): string {
+  return pubkey ? `${pubkey.slice(0, 8)}…${pubkey.slice(-6)}` : "pending";
+}
+
 export default function Peerlane() {
   const [input, setInput] = useState("");
   const [wf, setWf] = useState(0);
@@ -68,7 +72,14 @@ export default function Peerlane() {
   const [showTrace, setShowTrace] = useState(false);
   const [contribs, setContribs] = useState<Partial<Record<NodeId, string>>>({});
   const [copied, setCopied] = useState(false);
+  const [proofCopied, setProofCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [topology, setTopology] = useState<Record<NodeId, { pubkey: string; online: boolean }>>({
+    coord: { pubkey: "", online: false },
+    research: { pubkey: "", online: false },
+    verify: { pubkey: "", online: false },
+    analyst: { pubkey: "", online: false },
+  });
 
   const logRef = useRef<HTMLDivElement | null>(null);
   const meshRef = useRef<HTMLDivElement | null>(null);
@@ -121,7 +132,15 @@ export default function Peerlane() {
         const m = ev.message;
         setLog((p) => [
           ...p,
-          { t: formatTs(m.ts), src: m.from, dst: m.to, type: m.type.slice(0, 3), detail: m.verb },
+          {
+            t: formatTs(m.ts),
+            src: m.from,
+            dst: m.to,
+            type: m.type.slice(0, 3),
+            detail: m.verb,
+            mid: m.mid,
+            parentMid: m.parentMid,
+          },
         ]);
         break;
       }
@@ -154,8 +173,9 @@ export default function Peerlane() {
       }
 
       case "topology": {
-        // Could update an "offline" badge per node — ignore for now, all
-        // nodes are assumed online once the WS is connected.
+        setTopology(Object.fromEntries(
+          ev.nodes.map((node) => [node.id, { pubkey: node.pubkey, online: node.online }]),
+        ) as Record<NodeId, { pubkey: string; online: boolean }>);
         break;
       }
     }
@@ -195,6 +215,23 @@ export default function Peerlane() {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     }
+  };
+
+  const copyProof = () => {
+    const lines = [
+      "Peerlane AXL proof",
+      `task: ${pipe?.id ?? "none"}`,
+      "route: coord -> research -> verify -> analyst -> coord",
+      "",
+      "nodes:",
+      ...NODES.map((n) => `${n.id}: ${topology[n.id]?.online ? "online" : "offline"} ${topology[n.id]?.pubkey ?? ""}`),
+      "",
+      "messages:",
+      ...log.map((e) => `${e.t} ${e.src}->${e.dst} ${e.type} ${e.detail}${e.mid ? ` mid=${e.mid}` : ""}${e.parentMid ? ` parent=${e.parentMid}` : ""}`),
+    ];
+    navigator.clipboard?.writeText(lines.join("\n"));
+    setProofCopied(true);
+    setTimeout(() => setProofCopied(false), 1500);
   };
 
   return (
@@ -280,7 +317,7 @@ export default function Peerlane() {
             }}>
               <span style={{
                 width: 6, height: 6, display: "inline-block",
-                background: busy.has(n.id) ? "var(--c-accent)" : connected ? "var(--c-ok)" : "var(--c-mute)",
+                background: busy.has(n.id) ? "var(--c-accent)" : topology[n.id]?.online ? "var(--c-ok)" : "var(--c-mute)",
               }} />
               {n.name}<span style={{ color: "var(--c-mute)", fontWeight: 400 }}>:{n.port}</span>
             </div>
@@ -360,10 +397,25 @@ export default function Peerlane() {
             fontSize: 11, color: "var(--c-dim)", lineHeight: 1.8,
           }}>
             <div style={{ color: "var(--c-ink-2)", marginBottom: 4, fontWeight: 500 }}>topology</div>
+            route <span style={{ color: "var(--c-ink)" }}>coord → research → verify → analyst → coord</span><br />
             transport <span style={{ color: "var(--c-ink)" }}>axl / yggdrasil</span><br />
-            encryption <span style={{ color: "var(--c-ink)" }}>e2e curve25519</span><br />
-            protocol <span style={{ color: "var(--c-ink)" }}>mcp + a2a</span><br />
+            identity <span style={{ color: "var(--c-ink)" }}>node pubkeys</span><br />
             broker <span style={{ color: "var(--c-accent)" }}>none</span>
+          </div>
+
+          <div style={{
+            paddingTop: 10, borderTop: "1px solid var(--c-line-soft)",
+            fontSize: 10.5, color: "var(--c-dim)", lineHeight: 1.7,
+          }}>
+            <div style={{ color: "var(--c-ink-2)", marginBottom: 5, fontWeight: 500 }}>node identity</div>
+            {NODES.map((n) => (
+              <div key={n.id} style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ color: topology[n.id]?.online ? "var(--c-ink)" : "var(--c-mute)" }}>{n.id}</span>
+                <span title={topology[n.id]?.pubkey} style={{ color: "var(--c-dim)" }}>
+                  {shortKey(topology[n.id]?.pubkey)}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -565,9 +617,12 @@ export default function Peerlane() {
                         }}>
                           <div style={{
                             fontSize: 11, color: "var(--c-ink)", marginBottom: 4,
-                            fontWeight: 600,
+                            fontWeight: 600, display: "flex", justifyContent: "space-between", gap: 8,
                           }}>
-                            {nid}
+                            <span>{nid}</span>
+                            <span title={topology[nid as NodeId]?.pubkey} style={{ color: "var(--c-dim)", fontWeight: 400 }}>
+                              {shortKey(topology[nid as NodeId]?.pubkey)}
+                            </span>
                           </div>
                           <div style={{
                             fontSize: 11, color: "var(--c-ink-2)", lineHeight: 1.6,
@@ -595,7 +650,7 @@ export default function Peerlane() {
             color: "var(--c-ink-2)", fontSize: 11, fontWeight: 500,
           }}
         >
-          <span>trace · <span style={{ color: "var(--c-ink)" }}>{log.length}</span> events</span>
+          <span>trace · <span style={{ color: "var(--c-ink)" }}>{log.length}</span> events · direct axl proof</span>
           <span style={{
             transition: "transform 0.15s",
             transform: showTrace ? "rotate(180deg)" : "none",
@@ -619,41 +674,70 @@ export default function Peerlane() {
                 no events
               </div>
             ) : (
-              <table style={{
-                width: "100%", borderCollapse: "collapse",
-                fontSize: 11, lineHeight: 1.7,
-              }}>
-                <thead>
-                  <tr style={{
-                    color: "var(--c-dim)",
-                    borderBottom: "1px solid var(--c-line)",
-                  }}>
-                    <th style={{ textAlign: "left", fontWeight: 500, padding: "5px 0", width: 90 }}>time</th>
-                    <th style={{ textAlign: "left", fontWeight: 500, width: 80 }}>from</th>
-                    <th style={{ textAlign: "left", fontWeight: 500, width: 14 }}></th>
-                    <th style={{ textAlign: "left", fontWeight: 500, width: 80 }}>to</th>
-                    <th style={{ textAlign: "left", fontWeight: 500, width: 50 }}>type</th>
-                    <th style={{ textAlign: "left", fontWeight: 500 }}>detail</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {log.map((e, i) => (
-                    <tr key={i} style={{ borderBottom: "1px solid var(--c-line-soft)" }}>
-                      <td style={{ color: "var(--c-dim)", padding: "4px 0" }}>{e.t}</td>
-                      <td style={{ color: "var(--c-ink)", fontWeight: 500 }}>{e.src}</td>
-                      <td style={{ color: "var(--c-mute)", fontSize: 10 }}>→</td>
-                      <td style={{ color: "var(--c-ink)", fontWeight: 500 }}>{e.dst}</td>
-                      <td style={{ color: "var(--c-accent)", fontWeight: 600 }}>{e.type}</td>
-                      <td style={{
-                        color: "var(--c-ink-2)", maxWidth: 400,
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                      }}>
-                        {e.detail}
-                      </td>
+              <>
+                <div style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "8px 0", borderBottom: "1px solid var(--c-line)",
+                  fontSize: 11, color: "var(--c-dim)",
+                }}>
+                  <span>
+                    route <span style={{ color: "var(--c-ink)" }}>coord → research → verify → analyst → coord</span>
+                  </span>
+                  <button
+                    onClick={copyProof}
+                    style={{
+                      fontSize: 11, padding: "3px 10px", background: "var(--c-paper)",
+                      border: "1px solid var(--c-line)",
+                      color: proofCopied ? "var(--c-ok)" : "var(--c-ink-2)", cursor: "pointer",
+                    }}
+                  >
+                    {proofCopied ? "proof copied" : "copy proof"}
+                  </button>
+                </div>
+                <table style={{
+                  width: "100%", borderCollapse: "collapse",
+                  fontSize: 11, lineHeight: 1.7,
+                }}>
+                  <thead>
+                    <tr style={{
+                      color: "var(--c-dim)",
+                      borderBottom: "1px solid var(--c-line)",
+                    }}>
+                      <th style={{ textAlign: "left", fontWeight: 500, padding: "5px 0", width: 90 }}>time</th>
+                      <th style={{ textAlign: "left", fontWeight: 500, width: 82 }}>from</th>
+                      <th style={{ textAlign: "left", fontWeight: 500, width: 14 }}></th>
+                      <th style={{ textAlign: "left", fontWeight: 500, width: 82 }}>to</th>
+                      <th style={{ textAlign: "left", fontWeight: 500, width: 50 }}>type</th>
+                      <th style={{ textAlign: "left", fontWeight: 500, width: 130 }}>message id</th>
+                      <th style={{ textAlign: "left", fontWeight: 500 }}>detail</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {log.map((e, i) => (
+                      <tr key={i} style={{ borderBottom: "1px solid var(--c-line-soft)" }}>
+                        <td style={{ color: "var(--c-dim)", padding: "4px 0" }}>{e.t}</td>
+                        <td title={topology[e.src as NodeId]?.pubkey} style={{ color: "var(--c-ink)", fontWeight: 500 }}>
+                          {e.src}
+                        </td>
+                        <td style={{ color: "var(--c-mute)", fontSize: 10 }}>→</td>
+                        <td title={topology[e.dst as NodeId]?.pubkey} style={{ color: "var(--c-ink)", fontWeight: 500 }}>
+                          {e.dst}
+                        </td>
+                        <td style={{ color: "var(--c-accent)", fontWeight: 600 }}>{e.type}</td>
+                        <td title={e.parentMid ? `parent: ${e.parentMid}` : undefined} style={{ color: "var(--c-dim)" }}>
+                          {e.mid ? e.mid.slice(0, 8) : "local"}
+                        </td>
+                        <td style={{
+                          color: "var(--c-ink-2)", maxWidth: 400,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}>
+                          {e.detail}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
             )}
           </div>
         )}
