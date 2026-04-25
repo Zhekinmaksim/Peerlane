@@ -1,0 +1,7 @@
+{
+  "PrivateKeyPath": "keys/analyst.pem",
+  "Peers": ["tls://127.0.0.1:7001"],
+  "Listen": [],
+  "api_port": 9032,
+  "tcp_port": 7031
+}

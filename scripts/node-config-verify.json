@@ -1,0 +1,7 @@
+{
+  "PrivateKeyPath": "keys/verify.pem",
+  "Peers": ["tls://127.0.0.1:7001"],
+  "Listen": [],
+  "api_port": 9022,
+  "tcp_port": 7021
+}
