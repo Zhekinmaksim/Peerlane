@@ -24,6 +24,10 @@ A tight walkthrough for judges. Every beat earns its time.
 
 [Point to the four node badges and the node identity list with short pubkeys.]
 
+> "Each node advertises capabilities in the registry, like `research.market`
+> and `verify.claims`. Coord chooses the route from those capabilities, then
+> sends an A2A-style `message/send` payload through AXL."
+
 ---
 
 ## Beat 2 — submit a task (15s)
@@ -63,19 +67,26 @@ Click the **trace** footer to expand.
 
 > "Here's the proof this isn't a mock. Every row is one AXL message — from,
 > to, verb, timestamp, and message id. The node pubkeys are visible on the
-> left and attached to the agent breakdown. Worker handoffs are not routed
-> through a central HTTP service."
+> left and attached to the agent breakdown. The MCP tool column shows the
+> structured tool intent carried inside the A2A payload. Worker handoffs are
+> not routed through a central HTTP service."
 
 Click **copy proof**.
 
 > "This copies the route, node pubkeys, and message ids into a judge-friendly
 > verification log."
 
+Point to the gossip count.
+
+> "Workers also gossip intermediate results to peers. The main route stays
+> direct, but the mesh gets broadcast state after each step."
+
 If asked to prove it from the terminal:
 
 ```bash
 docker compose logs --no-color coord research verify analyst | rg 'DISPATCH|FORWARD|RETURN|inbound'
 docker compose exec -T coord curl -fsS http://127.0.0.1:9002/topology
+docker compose exec -T coord cat /data/registry/mesh-registry.json
 ```
 
 ---

@@ -11,8 +11,9 @@ at ETHGlobal Open Agents.
 
 ## What it does
 
-You submit one task from the UI. The coordinator starts the route, then
-the workers hand the task to each other directly over AXL:
+You submit one task from the UI. The coordinator discovers worker capabilities
+from the peer registry, starts the route, then the workers hand the task to each
+other directly over AXL:
 
 `coord -> research -> verify -> analyst -> coord`
 
@@ -23,26 +24,36 @@ the task directly to each other through AXL.
 The UI shows cross-node execution, the final synthesized result, and a
 trace of the peer-to-peer messages used to complete the task.
 
+Peerlane uses AXL as a custom Agent2Agent-style binding: every inter-agent
+message still travels through AXL `/send` and `/recv`, but the application
+payload includes an A2A `message/send` structure plus MCP-style tool metadata.
+Each peer also advertises an A2A-style Agent Card with skills/capabilities in
+the registry.
+
 Four agents:
 
-| Role        | What it does                                            | AXL port |
-| :---------- | :------------------------------------------------------ | :------- |
-| `coord`     | Accepts user tasks; starts the route; returns results   | `9002`   |
-| `research`  | Gathers facts and primary sources                       | `9012`   |
-| `verify`    | Cross-references claims; flags low-confidence data      | `9022`   |
-| `analyst`   | Synthesizes verified findings into a final report       | `9032`   |
+| Role        | Capability           | What it does                                      | AXL port |
+| :---------- | :------------------- | :------------------------------------------------ | :------- |
+| `coord`     | `task.entrypoint`    | Accepts user tasks; selects peers by capability   | `9002`   |
+| `research`  | `research.market`    | Gathers facts and primary sources                 | `9012`   |
+| `verify`    | `verify.claims`      | Cross-references claims; flags low-confidence data | `9022`   |
+| `analyst`   | `analyst.synthesize` | Synthesizes verified findings into a final report | `9032`   |
 
 Each role is a **separate OS process** running its own AXL node binary and
 its own Node.js agent. Worker-to-worker handoffs go over the AXL mesh —
 no shared in-process state, no centralized message bus, and no coordinator
 proxy for the research -> verify -> analyst path.
 
+After each worker step, the agent also sends a lightweight `GOSSIP` broadcast
+with its intermediate result to the rest of the mesh. This makes intermediate
+state visible without handing orchestration back to the coordinator.
+
 ---
 
 ## Requirements
 
 - **Docker + Compose** (recommended for the cleanest demo), OR
-- **Node.js 20+**, **Go 1.25.5+**, **OpenSSL 3+** for running locally
+- **Node.js 20+**, **Go 1.24+ with `GOTOOLCHAIN=auto`**, **OpenSSL 3+** for running locally
 - An **`ANTHROPIC_API_KEY`** — or set `PEERLANE_MOCK_LLM=1` for deterministic offline responses
 
 ---
@@ -140,7 +151,9 @@ centralized broker:
 **0. Use the UI proof panel.** Open the trace drawer after a run. It shows:
 - the fixed route: `coord -> research -> verify -> analyst -> coord`
 - node pubkeys from the live registry
+- advertised capabilities and A2A Agent Card metadata
 - every message's `from`, `to`, `type`, `verb`, timestamp, and message id
+- MCP-style tool names attached to A2A message payloads
 - a **copy proof** button for judges
 
 **1. Inspect the registry.** Each agent's AXL public key is independent
@@ -169,12 +182,28 @@ research   FORWARD sent task=... to=verify verb="cross_reference"
 verify     FORWARD sent task=... to=analyst verb="synthesize"
 analyst    RETURN sent for task=...
 coord      inbound RETURN from=analyst task=...
+research   GOSSIP broadcast task=... peers=3
 ```
 
 For an end-to-end automated proof, run:
 ```bash
 PEERLANE_MOCK_LLM=1 ./scripts/smoke-test.sh
 ```
+
+## Why this wins Gensyn
+
+- **AXL is the transport, not a checkbox.** Four independent AXL nodes exchange
+  every agent message through `/send` and `/recv`.
+- **No central worker orchestrator.** Coord starts the task, then workers hand
+  off directly: research -> verify -> analyst.
+- **A2A/MCP-aware payloads.** Messages carry A2A `message/send` structure and
+  MCP-style tool metadata while using AXL as the custom peer transport.
+- **Dynamic capability routing.** Agents advertise skills in the registry;
+  coord selects peers by capability instead of hardcoding pubkeys.
+- **Broadcast layer.** Workers gossip intermediate results to peers, giving the
+  mesh more than a single request/reply path.
+- **Judge-verifiable proof.** UI proof panel, Docker logs, registry pubkeys,
+  topology output, and smoke-test assertions all prove the same route.
 
 ---
 

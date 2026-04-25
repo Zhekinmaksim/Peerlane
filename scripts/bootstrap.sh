@@ -22,8 +22,8 @@ fi
 pushd axl > /dev/null
 if [ ! -f node ]; then
   echo ">>> building AXL node binary (go build)"
-  # Go 1.26 compat: the docs note the toolchain pin is in go.mod.
-  GOTOOLCHAIN=go1.25.5 go build -o node ./cmd/node/
+  # Let AXL's go.mod/toolchain directive select the exact Go patch version.
+  GOTOOLCHAIN=auto go build -o node ./cmd/node/
 fi
 popd > /dev/null
 

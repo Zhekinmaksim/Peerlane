@@ -8,7 +8,8 @@
 #   3. frontend proxy accepts POST /task
 #   4. WebSocket emits task_started, message, contribution, task_complete
 #   5. registry contains 4 distinct peers
-#   6. compose logs show all four agents reached AXL ready
+#   6. registry contains A2A Agent Cards + advertised capabilities
+#   7. compose logs show direct worker handoffs and at least one gossip broadcast
 
 set -euo pipefail
 
@@ -54,8 +55,20 @@ docker compose exec -T coord node -e '
 const fs = require("fs");
 const reg = JSON.parse(fs.readFileSync("/data/registry/mesh-registry.json", "utf8"));
 const roles = ["coord", "research", "verify", "analyst"];
+const requiredCapabilities = {
+  coord: "task.entrypoint",
+  research: "research.market",
+  verify: "verify.claims",
+  analyst: "analyst.synthesize",
+};
 for (const role of roles) {
   if (!reg.peers?.[role]?.pubkey) throw new Error(`missing ${role}`);
+  if (!reg.peers?.[role]?.capabilities?.includes(requiredCapabilities[role])) {
+    throw new Error(`missing capability ${requiredCapabilities[role]} on ${role}`);
+  }
+  if (reg.peers?.[role]?.agentCard?.protocolVersion !== "1.0") {
+    throw new Error(`missing A2A 1.0 agentCard on ${role}`);
+  }
 }
 const unique = new Set(roles.map((role) => reg.peers[role].pubkey));
 if (unique.size !== roles.length) throw new Error("pubkeys are not distinct");
@@ -64,5 +77,13 @@ console.log(JSON.stringify(reg, null, 2));
 
 echo ">>> verifying agent logs"
 docker compose logs --no-color coord research verify analyst | grep -E "AXL ready|all peers online|HTTP\\+WS listening"
+
+echo ">>> verifying direct AXL route and gossip"
+LOGS="$(docker compose logs --no-color coord research verify analyst)"
+echo "$LOGS" | grep -E 'coord.*DISPATCH task=.*to=research'
+echo "$LOGS" | grep -E 'research.*FORWARD sent task=.*to=verify'
+echo "$LOGS" | grep -E 'verify.*FORWARD sent task=.*to=analyst'
+echo "$LOGS" | grep -E 'analyst.*RETURN sent for task='
+echo "$LOGS" | grep -E 'GOSSIP broadcast task=.*peers='
 
 echo ">>> smoke test passed"

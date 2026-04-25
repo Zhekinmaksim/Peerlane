@@ -19,11 +19,19 @@
 
 import { readFile, writeFile, mkdir, rename, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { NodeId } from "../types/messages.js";
+import type { AgentCard, CapabilityId, NodeId } from "../types/messages.js";
+
+export interface PeerEntry {
+  pubkey: string;
+  apiPort: number;
+  registeredAt: string;
+  capabilities: CapabilityId[];
+  agentCard?: AgentCard;
+}
 
 export interface PeerRegistry {
   // Updated atomically by each agent on startup.
-  peers: Partial<Record<NodeId, { pubkey: string; apiPort: number; registeredAt: string }>>;
+  peers: Partial<Record<NodeId, PeerEntry>>;
 }
 
 const EXPECTED_ROLES: NodeId[] = ["coord", "research", "verify", "analyst"];
@@ -74,9 +82,16 @@ export async function registerSelf(
   role: NodeId,
   pubkey: string,
   apiPort: number,
+  options: { capabilities?: CapabilityId[]; agentCard?: AgentCard } = {},
 ): Promise<void> {
   await mkdir(roleDir(path), { recursive: true });
-  const entry = { pubkey, apiPort, registeredAt: new Date().toISOString() };
+  const entry: PeerEntry = {
+    pubkey,
+    apiPort,
+    registeredAt: new Date().toISOString(),
+    capabilities: options.capabilities ?? [],
+    agentCard: options.agentCard,
+  };
   const rolePath = join(roleDir(path), `${role}.json`);
   const tmp = `${rolePath}.${process.pid}.${Date.now()}.tmp`;
   await writeFile(tmp, JSON.stringify(entry, null, 2), "utf-8");
@@ -116,4 +131,17 @@ export function lookupPubkey(reg: PeerRegistry, role: NodeId): string {
   const entry = reg.peers[role];
   if (!entry) throw new Error(`No registered pubkey for role "${role}"`);
   return entry.pubkey;
+}
+
+export function findPeerByCapability(
+  reg: PeerRegistry,
+  capability: CapabilityId,
+): Exclude<NodeId, "coord"> {
+  for (const [role, entry] of Object.entries(reg.peers) as Array<[NodeId, PeerEntry | undefined]>) {
+    if (role === "coord") continue;
+    if (!entry) continue;
+    if (entry.capabilities.includes(capability)) return role;
+    if (entry.agentCard?.skills.some((skill) => skill.id === capability)) return role;
+  }
+  throw new Error(`No registered peer advertises capability "${capability}"`);
 }

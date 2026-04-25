@@ -28,7 +28,7 @@ services:
     volumes:
       - mesh:/data
     healthcheck:
-      test: ["CMD", "curl", "-fs", "http://localhost:8080/status"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080/status >/dev/null && curl -fs http://localhost:9002/topology >/dev/null"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -46,6 +46,11 @@ services:
     depends_on:
       coord:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:$${AXL_API_PORT}/topology >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   verify:
     build: { context: . }
@@ -60,6 +65,11 @@ services:
     depends_on:
       coord:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:$${AXL_API_PORT}/topology >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   analyst:
     build: { context: . }
@@ -74,6 +84,11 @@ services:
     depends_on:
       coord:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:$${AXL_API_PORT}/topology >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   frontend:
     build:

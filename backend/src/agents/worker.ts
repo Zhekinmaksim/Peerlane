@@ -21,6 +21,7 @@ import {
   lookupPubkey,
   type PeerRegistry,
 } from "../axl/registry.js";
+import { attachProtocol, capabilitiesFor, makeAgentCard } from "../axl/protocols.js";
 import { callLlm } from "../llm/client.js";
 import type {
   ChainTraceEntry,
@@ -53,7 +54,10 @@ export async function runWorker(cfg: WorkerConfig): Promise<void> {
   log(role, "AXL ready, pubkey =", short(myPubkey));
 
   // Publish ourselves.
-  await registerSelf(cfg.registryPath, role, myPubkey, cfg.axlPort);
+  await registerSelf(cfg.registryPath, role, myPubkey, cfg.axlPort, {
+    capabilities: capabilitiesFor(role),
+    agentCard: makeAgentCard(role, myPubkey, cfg.axlPort),
+  });
   log(role, "registered in peer registry");
 
   // Wait for everyone else to register.
@@ -122,11 +126,16 @@ async function handleDispatch(
   const priorFindings = { ...(payload.priorFindings ?? {}), [role]: result.text };
   const contributions = { ...(payload.contributions ?? {}), [role]: result.text };
   const trace = [...(payload.trace ?? []), traceFrom(incoming)];
+  const currentCapability = payload.capability ?? capabilitiesFor(role)[0];
+
+  if (!result.error) {
+    await gossip(axl, cfg, registry, incoming, result.text, currentCapability);
+  }
 
   if (!result.error) {
     const [next, ...remainingRoute] = payload.route ?? [];
     if (next) {
-      const forward: PeerlaneMessage = {
+      const forward = attachProtocol({
         v: 1,
         mid: crypto.randomUUID(),
         taskId: incoming.taskId,
@@ -137,6 +146,7 @@ async function handleDispatch(
         verb: next.verb,
         payload: {
           question: payload.question,
+          capability: next.capability,
           context: payload.context,
           priorFindings,
           contributions,
@@ -144,11 +154,11 @@ async function handleDispatch(
           trace,
         } satisfies DispatchPayload,
         ts: new Date().toISOString(),
-      };
+      }, next.capability, payload.question);
 
       try {
         await axl.send(lookupPubkey(registry, next.node), forward);
-        log(role, `FORWARD sent task=${incoming.taskId} to=${next.node} verb="${next.verb}"`);
+        log(role, `FORWARD sent task=${incoming.taskId} to=${next.node} capability="${next.capability}" verb="${next.verb}"`);
         return;
       } catch (err) {
         const msg = (err as Error).message;
@@ -160,7 +170,7 @@ async function handleDispatch(
 
   // Only the final hop returns to coord. Earlier workers forward directly to
   // the next peer, so coord is no longer orchestrating every subtask.
-  const reply: PeerlaneMessage = {
+  const reply = attachProtocol({
     v: 1,
     mid: crypto.randomUUID(),
     taskId: incoming.taskId,
@@ -175,7 +185,7 @@ async function handleDispatch(
       trace,
     } satisfies ReturnPayload,
     ts: new Date().toISOString(),
-  };
+  }, currentCapability, result.text);
 
   try {
     await axl.send(lookupPubkey(registry, "coord"), reply);
@@ -183,6 +193,46 @@ async function handleDispatch(
   } catch (err) {
     log(role, "AXL send failed:", (err as Error).message);
   }
+}
+
+async function gossip(
+  axl: AxlClient,
+  cfg: WorkerConfig,
+  registry: PeerRegistry,
+  incoming: PeerlaneMessage,
+  text: string,
+  capability: NonNullable<DispatchPayload["capability"]>,
+): Promise<void> {
+  const role = cfg.role;
+  const peers = Object.keys(registry.peers)
+    .filter((peer): peer is NodeId => peer !== role && !!registry.peers[peer as NodeId]);
+
+  let sent = 0;
+  for (const peer of peers) {
+    const msg = attachProtocol({
+      v: 1,
+      mid: crypto.randomUUID(),
+      taskId: incoming.taskId,
+      parentMid: incoming.mid,
+      from: role,
+      to: peer,
+      type: "GOSSIP",
+      verb: `${role}.gossip`,
+      payload: {
+        text,
+        capability,
+        sourceMid: incoming.mid,
+      },
+      ts: new Date().toISOString(),
+    }, capability, text);
+    try {
+      await axl.send(lookupPubkey(registry, peer), msg);
+      sent += 1;
+    } catch (err) {
+      log(role, `GOSSIP failed to=${peer}:`, (err as Error).message);
+    }
+  }
+  log(role, `GOSSIP broadcast task=${incoming.taskId} peers=${sent}`);
 }
 
 function buildUserMessage(p: DispatchPayload): string {
@@ -219,12 +269,16 @@ function short(pk: string): string {
 }
 
 function traceFrom(message: PeerlaneMessage): ChainTraceEntry {
+  const capability = message.protocol?.a2a.message.metadata.capability as ChainTraceEntry["capability"];
   return {
     mid: message.mid,
     from: message.from,
     to: message.to,
     type: message.type,
     verb: message.verb,
+    capability,
+    protocolBinding: message.protocol?.binding,
+    mcpTool: message.protocol?.mcp?.toolName,
     ts: message.ts,
   };
 }

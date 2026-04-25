@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────
 # Peerlane image
 #
-# Stage 1: build the AXL node binary (Go 1.25.5, per AXL docs)
+# Stage 1: build the AXL node binary
 # Stage 2: build the TypeScript agent bundle
 # Stage 3: runtime — slim image with both the AXL binary and compiled JS
 # ─────────────────────────────────────────────────────────
@@ -11,7 +11,7 @@ FROM golang:1.25.5-bookworm AS axl-builder
 
 WORKDIR /src
 RUN git clone --depth 1 https://github.com/gensyn-ai/axl.git .
-RUN GOTOOLCHAIN=go1.25.5 go build -o /out/node ./cmd/node/
+RUN GOTOOLCHAIN=auto go build -o /out/node ./cmd/node/
 
 
 # ── Stage 2: TS build ──

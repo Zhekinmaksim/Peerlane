@@ -21,9 +21,13 @@ import {
   registerSelf,
   waitForAllPeers,
   lookupPubkey,
+  findPeerByCapability,
   type PeerRegistry,
 } from "../axl/registry.js";
+import { attachProtocol, capabilitiesFor, makeAgentCard } from "../axl/protocols.js";
 import type {
+  CapabilityId,
+  ChainHop,
   DispatchPayload,
   NodeId,
   PeerlaneMessage,
@@ -65,7 +69,10 @@ class Coordinator {
     const myPubkey = await waitForAxlReady(this.axl);
     log("AXL ready, pubkey =", short(myPubkey));
 
-    await registerSelf(REGISTRY_PATH, "coord", myPubkey, AXL_API_PORT);
+    await registerSelf(REGISTRY_PATH, "coord", myPubkey, AXL_API_PORT, {
+      capabilities: capabilitiesFor("coord"),
+      agentCard: makeAgentCard("coord", myPubkey, AXL_API_PORT),
+    });
     log("registered in peer registry");
 
     this.registry = await waitForAllPeers(REGISTRY_PATH);
@@ -97,6 +104,8 @@ class Coordinator {
         id,
         pubkey: this.registry.peers[id]?.pubkey ?? "",
         online: !!this.registry.peers[id],
+        capabilities: this.registry.peers[id]?.capabilities ?? [],
+        agentCard: this.registry.peers[id]?.agentCard,
       })),
     };
   }
@@ -133,9 +142,10 @@ class Coordinator {
     timeoutMs = 60_000,
   ): Promise<ReturnPayload> {
     const peerPubkey = lookupPubkey(this.registry, to);
-    const msg: PeerlaneMessage = {
+    const mid = crypto.randomUUID();
+    const msg = attachProtocol({
       v: 1,
-      mid: crypto.randomUUID(),
+      mid,
       taskId,
       from: "coord",
       to,
@@ -143,9 +153,9 @@ class Coordinator {
       verb,
       payload,
       ts: new Date().toISOString(),
-    };
+    }, payload.capability ?? "task.entrypoint", payload.question);
 
-    log(`DISPATCH task=${taskId} to=${to} verb="${verb}"`);
+    log(`DISPATCH task=${taskId} to=${to} capability="${payload.capability ?? "task.entrypoint"}" verb="${verb}"`);
     this.hub.broadcast({ kind: "message", message: msg });
     this.hub.broadcast({ kind: "node_busy", node: to, busy: true, ts: msg.ts });
 
@@ -153,7 +163,7 @@ class Coordinator {
     const replyPromise = new Promise<ReturnPayload>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(key);
-        reject(new Error(`Timeout waiting for ${to}`));
+        reject(new Error(`Timeout waiting for ${awaitFrom}`));
       }, timeoutMs);
       this.pending.set(key, { taskId, fromRole: to, resolve, reject, timeout });
     });
@@ -188,6 +198,7 @@ class Coordinator {
   async runResearchBrief(question: string): Promise<{ taskId: string; result: string }> {
     const taskId = crypto.randomUUID().slice(0, 8);
     const ts = () => new Date().toISOString();
+    const route = this.planRoute();
 
     this.hub.broadcast({ kind: "task_started", taskId, question, ts: ts() });
 
@@ -203,29 +214,29 @@ class Coordinator {
     stepUpdate(1, "run");
     let analystResult: ReturnPayload;
     try {
-      analystResult = await this.dispatch(taskId, "research", "gather_sources", {
+      const [firstHop, ...remainingRoute] = route;
+      analystResult = await this.dispatch(taskId, firstHop.node, firstHop.verb, {
         question,
-        route: [
-          { node: "verify", verb: "cross_reference" },
-          { node: "analyst", verb: "synthesize" },
-        ],
-      }, "analyst");
+        capability: firstHop.capability,
+        route: remainingRoute,
+      }, route[route.length - 1].node);
 
       for (const entry of analystResult.trace ?? []) {
         if (entry.from === "coord") continue;
+        const message = {
+          v: 1,
+          mid: entry.mid,
+          taskId,
+          from: entry.from,
+          to: entry.to,
+          type: entry.type,
+          verb: entry.verb,
+          payload: {},
+          ts: entry.ts,
+        } satisfies PeerlaneMessage;
         this.hub.broadcast({
           kind: "message",
-          message: {
-            v: 1,
-            mid: entry.mid,
-            taskId,
-            from: entry.from,
-            to: entry.to,
-            type: entry.type,
-            verb: entry.verb,
-            payload: {},
-            ts: entry.ts,
-          },
+          message: entry.capability ? attachProtocol(message, entry.capability, entry.verb) : message,
         });
       }
 
@@ -250,6 +261,22 @@ class Coordinator {
     }
 
     return { taskId, result: analystResult.text };
+  }
+
+  private planRoute(): ChainHop[] {
+    const plan: Array<{ capability: CapabilityId; verb: string }> = [
+      { capability: "research.market", verb: "gather_sources" },
+      { capability: "verify.claims", verb: "cross_reference" },
+      { capability: "analyst.synthesize", verb: "synthesize" },
+    ];
+
+    const route = plan.map((hop) => ({
+      ...hop,
+      node: findPeerByCapability(this.registry, hop.capability),
+    }));
+    log("dynamic route selected:",
+      route.map((hop) => `${hop.node}:${hop.capability}`).join(" -> "));
+    return route;
   }
 }
 

@@ -75,6 +75,48 @@ sequenceDiagram
     Coord->>UI: WS task_complete
 ```
 
+## Discovery and routing
+
+Every process writes an inspectable peer record to the shared registry after its
+AXL node is ready. The record contains:
+
+- AXL public key
+- local AXL API port
+- advertised capabilities
+- an A2A-style Agent Card
+
+Coord does not hardcode peer pubkeys. For each task it selects peers by
+capability:
+
+| Capability | Selected role | Verb |
+| :--- | :--- | :--- |
+| `research.market` | `research` | `gather_sources` |
+| `verify.claims` | `verify` | `cross_reference` |
+| `analyst.synthesize` | `analyst` | `synthesize` |
+
+That gives the demo a simple "Agent Town" pattern: agents advertise what they
+can do, and the route is built from the live registry.
+
+## A2A/MCP over AXL
+
+AXL remains the only inter-agent transport. Peerlane treats AXL as a custom
+A2A binding:
+
+```text
+AXL /send + /recv
+  └── PeerlaneMessage
+        └── protocol.binding = https://peerlane.local/bindings/axl-a2a/v1
+        └── protocol.a2a.operation = message/send
+        └── protocol.mcp.toolName = peerlane.gather_sources | ...
+```
+
+This is intentionally lightweight. It does not replace AXL with HTTP A2A; it
+adds structured agent-to-agent semantics inside the bytes AXL carries.
+
+Workers also emit `GOSSIP` messages after each step. These broadcasts carry the
+intermediate result and MCP tool metadata to other peers, while the main route
+continues peer-to-peer.
+
 ## Message envelope
 
 Every AXL payload in Peerlane is a JSON-encoded `PeerlaneMessage`:
@@ -87,9 +129,30 @@ interface PeerlaneMessage {
   parentMid?: string;       // reply chain
   from: NodeId;             // "coord" | "research" | "verify" | "analyst"
   to: NodeId;
-  type: "DISPATCH" | "RETURN" | "ACK" | "ERROR";
+  type: "DISPATCH" | "RETURN" | "ACK" | "GOSSIP" | "ERROR";
   verb: string;             // e.g. "gather_sources", "cross_reference"
   payload: unknown;         // shape depends on type
+  protocol?: {
+    binding: string;         // custom AXL/A2A binding URI
+    a2a: {
+      protocol: "a2a";
+      version: "1.0";
+      operation: "message/send";
+      message: {
+        role: "ROLE_USER" | "ROLE_AGENT";
+        parts: Array<{ text: string }>;
+        messageId: string;
+        taskId: string;
+        contextId: string;
+        metadata: Record<string, unknown>;
+      };
+    };
+    mcp?: {
+      protocol: "mcp";
+      toolName: string;
+      arguments: Record<string, unknown>;
+    };
+  };
   ts: string;               // ISO timestamp
 }
 ```
@@ -112,7 +175,7 @@ the frontend's HTTP+WS connection and starts the route, but it does not
 orchestrate each worker step. Research forwards directly to verify; verify
 forwards directly to analyst; analyst returns directly to coord.
 
-**Direct dependency chain.** Research → verify → analyst. Verify needs
-research findings to cross-check; analyst needs both to synthesize a
-report. The route is carried inside the AXL payload so every worker knows
-only its next peer, not the whole orchestration state.
+**Capability route, not pubkey route.** Research -> verify -> analyst remains
+the current workflow shape, but coord selects the concrete nodes by capability
+from the registry. The route is carried inside the AXL payload so every worker
+knows only its next peer, not the whole orchestration state.

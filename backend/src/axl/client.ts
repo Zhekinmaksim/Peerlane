@@ -4,10 +4,11 @@
  * Each AXL node exposes a local HTTP server (default :9002). We use:
  *   - GET  /topology    → our public key, IPv6, known peers
  *   - POST /send        → fire-and-forget message to a peer
- *   - GET  /recv        → poll for inbound messages (non-MCP/A2A)
+ *   - GET  /recv        → poll for inbound messages
  *
- * AXL is application-agnostic: it moves bytes. We put a JSON envelope
- * (PeerlaneMessage) inside.
+ * AXL is application-agnostic: it moves bytes. We put a PeerlaneMessage
+ * envelope inside, with an A2A 1.0-style message/send payload and MCP-style
+ * tool metadata under `message.protocol`.
  *
  * Reference: https://docs.gensyn.ai/tech/agent-exchange-layer
  */

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  AgentCard,
+  CapabilityId,
   LogEntry,
   NodeId,
   Pipeline,
@@ -74,11 +76,16 @@ export default function Peerlane() {
   const [copied, setCopied] = useState(false);
   const [proofCopied, setProofCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [topology, setTopology] = useState<Record<NodeId, { pubkey: string; online: boolean }>>({
-    coord: { pubkey: "", online: false },
-    research: { pubkey: "", online: false },
-    verify: { pubkey: "", online: false },
-    analyst: { pubkey: "", online: false },
+  const [topology, setTopology] = useState<Record<NodeId, {
+    pubkey: string;
+    online: boolean;
+    capabilities: CapabilityId[];
+    agentCard?: AgentCard;
+  }>>({
+    coord: { pubkey: "", online: false, capabilities: [] },
+    research: { pubkey: "", online: false, capabilities: [] },
+    verify: { pubkey: "", online: false, capabilities: [] },
+    analyst: { pubkey: "", online: false, capabilities: [] },
   });
 
   const logRef = useRef<HTMLDivElement | null>(null);
@@ -140,6 +147,8 @@ export default function Peerlane() {
             detail: m.verb,
             mid: m.mid,
             parentMid: m.parentMid,
+            protocol: m.protocol?.a2a.operation,
+            mcpTool: m.protocol?.mcp?.toolName,
           },
         ]);
         break;
@@ -174,8 +183,13 @@ export default function Peerlane() {
 
       case "topology": {
         setTopology(Object.fromEntries(
-          ev.nodes.map((node) => [node.id, { pubkey: node.pubkey, online: node.online }]),
-        ) as Record<NodeId, { pubkey: string; online: boolean }>);
+          ev.nodes.map((node) => [node.id, {
+            pubkey: node.pubkey,
+            online: node.online,
+            capabilities: node.capabilities,
+            agentCard: node.agentCard,
+          }]),
+        ) as Record<NodeId, { pubkey: string; online: boolean; capabilities: CapabilityId[]; agentCard?: AgentCard }>);
         break;
       }
     }
@@ -224,10 +238,10 @@ export default function Peerlane() {
       "route: coord -> research -> verify -> analyst -> coord",
       "",
       "nodes:",
-      ...NODES.map((n) => `${n.id}: ${topology[n.id]?.online ? "online" : "offline"} ${topology[n.id]?.pubkey ?? ""}`),
+      ...NODES.map((n) => `${n.id}: ${topology[n.id]?.online ? "online" : "offline"} ${topology[n.id]?.pubkey ?? ""} capabilities=${topology[n.id]?.capabilities.join(",")}`),
       "",
       "messages:",
-      ...log.map((e) => `${e.t} ${e.src}->${e.dst} ${e.type} ${e.detail}${e.mid ? ` mid=${e.mid}` : ""}${e.parentMid ? ` parent=${e.parentMid}` : ""}`),
+      ...log.map((e) => `${e.t} ${e.src}->${e.dst} ${e.type} ${e.detail}${e.protocol ? ` protocol=${e.protocol}` : ""}${e.mcpTool ? ` mcp=${e.mcpTool}` : ""}${e.mid ? ` mid=${e.mid}` : ""}${e.parentMid ? ` parent=${e.parentMid}` : ""}`),
     ];
     navigator.clipboard?.writeText(lines.join("\n"));
     setProofCopied(true);
@@ -400,6 +414,7 @@ export default function Peerlane() {
             route <span style={{ color: "var(--c-ink)" }}>coord → research → verify → analyst → coord</span><br />
             transport <span style={{ color: "var(--c-ink)" }}>axl / yggdrasil</span><br />
             identity <span style={{ color: "var(--c-ink)" }}>node pubkeys</span><br />
+            protocol <span style={{ color: "var(--c-ink)" }}>a2a 1.0 + mcp tools</span><br />
             broker <span style={{ color: "var(--c-accent)" }}>none</span>
           </div>
 
@@ -409,11 +424,16 @@ export default function Peerlane() {
           }}>
             <div style={{ color: "var(--c-ink-2)", marginBottom: 5, fontWeight: 500 }}>node identity</div>
             {NODES.map((n) => (
-              <div key={n.id} style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                <span style={{ color: topology[n.id]?.online ? "var(--c-ink)" : "var(--c-mute)" }}>{n.id}</span>
-                <span title={topology[n.id]?.pubkey} style={{ color: "var(--c-dim)" }}>
-                  {shortKey(topology[n.id]?.pubkey)}
-                </span>
+              <div key={n.id}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <span style={{ color: topology[n.id]?.online ? "var(--c-ink)" : "var(--c-mute)" }}>{n.id}</span>
+                  <span title={topology[n.id]?.pubkey} style={{ color: "var(--c-dim)" }}>
+                    {shortKey(topology[n.id]?.pubkey)}
+                  </span>
+                </div>
+                <div style={{ color: "var(--c-mute)", paddingLeft: 8, marginBottom: 2 }}>
+                  {topology[n.id]?.capabilities.join(", ") || "no capabilities"}
+                </div>
               </div>
             ))}
           </div>
@@ -682,6 +702,10 @@ export default function Peerlane() {
                 }}>
                   <span>
                     route <span style={{ color: "var(--c-ink)" }}>coord → research → verify → analyst → coord</span>
+                    <span style={{ margin: "0 8px", color: "var(--c-mute)" }}>·</span>
+                    axl msgs <span style={{ color: "var(--c-ink)" }}>{log.filter((e) => e.mid).length}</span>
+                    <span style={{ margin: "0 8px", color: "var(--c-mute)" }}>·</span>
+                    gossip <span style={{ color: "var(--c-ink)" }}>{log.filter((e) => e.type === "GOS").length}</span>
                   </span>
                   <button
                     onClick={copyProof}
@@ -708,6 +732,7 @@ export default function Peerlane() {
                       <th style={{ textAlign: "left", fontWeight: 500, width: 14 }}></th>
                       <th style={{ textAlign: "left", fontWeight: 500, width: 82 }}>to</th>
                       <th style={{ textAlign: "left", fontWeight: 500, width: 50 }}>type</th>
+                      <th style={{ textAlign: "left", fontWeight: 500, width: 118 }}>mcp tool</th>
                       <th style={{ textAlign: "left", fontWeight: 500, width: 130 }}>message id</th>
                       <th style={{ textAlign: "left", fontWeight: 500 }}>detail</th>
                     </tr>
@@ -724,6 +749,7 @@ export default function Peerlane() {
                           {e.dst}
                         </td>
                         <td style={{ color: "var(--c-accent)", fontWeight: 600 }}>{e.type}</td>
+                        <td style={{ color: "var(--c-dim)" }}>{e.mcpTool?.replace("peerlane.", "") ?? "—"}</td>
                         <td title={e.parentMid ? `parent: ${e.parentMid}` : undefined} style={{ color: "var(--c-dim)" }}>
                           {e.mid ? e.mid.slice(0, 8) : "local"}
                         </td>
