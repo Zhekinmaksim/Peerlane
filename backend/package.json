@@ -1,0 +1,35 @@
+{
+  "name": "peerlane-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Peerlane: peer-to-peer agent workspace on AXL",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist mesh-registry.json",
+    "start:coord": "node dist/agents/coordinator.js",
+    "start:research": "node dist/agents/research.js",
+    "start:verify": "node dist/agents/verify.js",
+    "start:analyst": "node dist/agents/analyst.js",
+    "start:all": "concurrently -n coord,research,verify,analyst -c yellow,cyan,green,magenta \"npm:start:coord\" \"npm:start:research\" \"npm:start:verify\" \"npm:start:analyst\"",
+    "dev:coord": "tsx watch src/agents/coordinator.ts",
+    "dev:research": "tsx watch src/agents/research.ts",
+    "dev:verify": "tsx watch src/agents/verify.ts",
+    "dev:analyst": "tsx watch src/agents/analyst.ts",
+    "dev:all": "concurrently -n coord,research,verify,analyst -c yellow,cyan,green,magenta \"npm:dev:coord\" \"npm:dev:research\" \"npm:dev:verify\" \"npm:dev:analyst\""
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "concurrently": "^9.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
