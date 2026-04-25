@@ -17,6 +17,15 @@ export interface PeerlaneMessage {
   ts: string;
 }
 
+export interface ChainTraceEntry {
+  mid: string;
+  from: NodeId;
+  to: NodeId;
+  type: MessageType;
+  verb: string;
+  ts: string;
+}
+
 export type WsEvent =
   | { kind: "task_started"; taskId: string; question: string; ts: string }
   | { kind: "message"; message: PeerlaneMessage }

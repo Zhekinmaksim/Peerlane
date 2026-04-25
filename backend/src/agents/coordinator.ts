@@ -7,8 +7,8 @@
  *       POST /task { question, workflow }  → starts a task
  *       GET  /status                       → current node registry
  *  3. Exposes a WebSocket at /ws for live UI updates.
- *  4. For each task, dispatches subtasks to research → verify → analyst
- *     over AXL, awaits each reply, emits WS events as they land.
+ *  4. For each task, dispatches one chained route to research. Workers then
+ *     hand off directly: research → verify → analyst → coord.
  *
  * All agent-to-agent traffic goes through AXL /send + /recv. We do not
  * proxy through any HTTP server — coord's own AXL node is the mesh
@@ -123,12 +123,13 @@ class Coordinator {
     }
   }
 
-  /** Dispatch a subtask over AXL and await the reply. */
+  /** Dispatch an AXL message and await the expected final peer reply. */
   private async dispatch(
     taskId: string,
     to: Exclude<NodeId, "coord">,
     verb: string,
     payload: DispatchPayload,
+    awaitFrom: Exclude<NodeId, "coord"> = to,
     timeoutMs = 60_000,
   ): Promise<ReturnPayload> {
     const peerPubkey = lookupPubkey(this.registry, to);
@@ -148,7 +149,7 @@ class Coordinator {
     this.hub.broadcast({ kind: "message", message: msg });
     this.hub.broadcast({ kind: "node_busy", node: to, busy: true, ts: msg.ts });
 
-    const key = `${taskId}:${to}`;
+    const key = `${taskId}:${awaitFrom}`;
     const replyPromise = new Promise<ReturnPayload>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(key);
@@ -179,13 +180,10 @@ class Coordinator {
    * Emits step_update events for the UI timeline.
    *
    * The pipeline:
-   *   research is dispatched first (it only needs the question).
-   *   verify is dispatched after research returns (it needs findings to check).
-   *   analyst is dispatched after both (it synthesizes the verified result).
-   *
-   * Steps 1 (coord→research) and 2 (coord→verify) both show "dispatch"
-   * in the UI even though the second happens later — this matches how the
-   * user reads the UI: "coord sends things out, workers reply".
+   *   coord dispatches once to research with an embedded route.
+   *   research forwards directly to verify over AXL.
+   *   verify forwards directly to analyst over AXL.
+   *   analyst returns the final result to coord.
    */
   async runResearchBrief(question: string): Promise<{ taskId: string; result: string }> {
     const taskId = crypto.randomUUID().slice(0, 8);
@@ -194,71 +192,62 @@ class Coordinator {
     this.hub.broadcast({ kind: "task_started", taskId, question, ts: ts() });
 
     // Step indices match the frontend pipeline definition:
-    // 0 user→coord, 1 coord→research, 2 coord→verify, 3 research→coord,
-    // 4 verify→coord, 5 coord→analyst, 6 analyst→coord, 7 coord→user
+    // 0 user→coord, 1 coord→research, 2 research→verify,
+    // 3 verify→analyst, 4 analyst→coord, 5 coord→user
     const stepUpdate = (stepIndex: number, state: "wait" | "run" | "ok" | "err", msg?: string) =>
       this.hub.broadcast({ kind: "step_update", taskId, stepIndex, state, msg, ts: ts() });
 
     stepUpdate(0, "ok");
 
-    // Step 1: coord → research.
+    // Coord only starts the chain. The workers own every following handoff.
     stepUpdate(1, "run");
-    let researchResult: ReturnPayload;
-    try {
-      researchResult = await this.dispatch(taskId, "research", "gather_sources", { question });
-      stepUpdate(1, "ok");
-      stepUpdate(3, "ok", researchResult.text);
-      this.hub.broadcast({ kind: "contribution", taskId, node: "research", text: researchResult.text, ts: ts() });
-    } catch (e) {
-      stepUpdate(1, "err", (e as Error).message);
-      stepUpdate(3, "err", (e as Error).message);
-      this.hub.broadcast({ kind: "task_error", taskId, error: (e as Error).message, ts: ts() });
-      throw e;
-    }
-
-    // Step 2: coord → verify (with research findings attached).
-    stepUpdate(2, "run");
-    let verifyResult: ReturnPayload;
-    try {
-      verifyResult = await this.dispatch(taskId, "verify", "cross_reference", {
-        question,
-        priorFindings: { research: researchResult.text } as Record<NodeId, string>,
-      });
-      stepUpdate(2, "ok");
-      stepUpdate(4, "ok", verifyResult.text);
-      this.hub.broadcast({ kind: "contribution", taskId, node: "verify", text: verifyResult.text, ts: ts() });
-    } catch (e) {
-      stepUpdate(2, "err", (e as Error).message);
-      stepUpdate(4, "err", (e as Error).message);
-      this.hub.broadcast({ kind: "task_error", taskId, error: (e as Error).message, ts: ts() });
-      throw e;
-    }
-
-    // Analyst synthesis.
-    stepUpdate(5, "run");
     let analystResult: ReturnPayload;
     try {
-      analystResult = await this.dispatch(taskId, "analyst", "synthesize", {
+      analystResult = await this.dispatch(taskId, "research", "gather_sources", {
         question,
-        priorFindings: {
-          research: researchResult.text,
-          verify: verifyResult.text,
-        } as Record<NodeId, string>,
-      });
+        route: [
+          { node: "verify", verb: "cross_reference" },
+          { node: "analyst", verb: "synthesize" },
+        ],
+      }, "analyst");
+
+      for (const entry of analystResult.trace ?? []) {
+        if (entry.from === "coord") continue;
+        this.hub.broadcast({
+          kind: "message",
+          message: {
+            v: 1,
+            mid: entry.mid,
+            taskId,
+            from: entry.from,
+            to: entry.to,
+            type: entry.type,
+            verb: entry.verb,
+            payload: {},
+            ts: entry.ts,
+          },
+        });
+      }
+
+      const contributions = analystResult.contributions ?? {};
+      stepUpdate(1, "ok");
+      stepUpdate(2, "ok", contributions.research);
+      stepUpdate(3, "ok", contributions.verify);
+      stepUpdate(4, "ok", analystResult.text);
+
+      for (const node of ["research", "verify", "analyst"] as const) {
+        const text = node === "analyst" ? analystResult.text : contributions[node];
+        if (text) this.hub.broadcast({ kind: "contribution", taskId, node, text, ts: ts() });
+      }
+
       stepUpdate(5, "ok");
-      stepUpdate(6, "ok", analystResult.text);
-      this.hub.broadcast({ kind: "contribution", taskId, node: "analyst", text: analystResult.text, ts: ts() });
+      const confidence = extractConfidence(contributions.verify ?? analystResult.text) ?? 0.85;
+      this.hub.broadcast({ kind: "task_complete", taskId, result: analystResult.text, confidence, ts: ts() });
     } catch (e) {
-      stepUpdate(5, "err", (e as Error).message);
-      stepUpdate(6, "err", (e as Error).message);
+      stepUpdate(1, "err", (e as Error).message);
       this.hub.broadcast({ kind: "task_error", taskId, error: (e as Error).message, ts: ts() });
       throw e;
     }
-
-    // Deliver.
-    stepUpdate(7, "ok");
-    const confidence = extractConfidence(verifyResult.text) ?? 0.85;
-    this.hub.broadcast({ kind: "task_complete", taskId, result: analystResult.text, confidence, ts: ts() });
 
     return { taskId, result: analystResult.text };
   }

@@ -35,12 +35,31 @@ export interface PeerlaneMessage {
   ts: string;
 }
 
+export interface ChainHop {
+  node: Exclude<NodeId, "coord">;
+  verb: string;
+}
+
+export interface ChainTraceEntry {
+  mid: string;
+  from: NodeId;
+  to: NodeId;
+  type: MessageType;
+  verb: string;
+  ts: string;
+}
+
 /** Sent from the coordinator to a worker agent. */
 export interface DispatchPayload {
   question: string;
   context?: string;
   // Previous findings from other agents, so workers can build on each other.
-  priorFindings?: Record<NodeId, string>;
+  priorFindings?: Partial<Record<NodeId, string>>;
+  // Remaining direct peer-to-peer hops after the current worker finishes.
+  route?: ChainHop[];
+  // Contributions and trace accumulated by workers during a chained run.
+  contributions?: Partial<Record<NodeId, string>>;
+  trace?: ChainTraceEntry[];
 }
 
 /** Worker → coord result. */
@@ -48,6 +67,8 @@ export interface ReturnPayload {
   text: string;
   confidence?: number;
   error?: string;
+  contributions?: Partial<Record<NodeId, string>>;
+  trace?: ChainTraceEntry[];
 }
 
 /** WebSocket event published to the frontend. */

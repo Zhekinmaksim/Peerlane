@@ -40,10 +40,8 @@ const WORKFLOWS = ["research brief", "due diligence", "source comp.", "code revi
 const STEP_TEMPLATE: Omit<PipelineStep, "state">[] = [
   { src: "user", dst: "coord", verb: "submit", msg: "" },
   { src: "coord", dst: "research", verb: "dispatch", msg: "gather sources" },
-  { src: "coord", dst: "verify", verb: "dispatch", msg: "prepare criteria" },
-  { src: "research", dst: "coord", verb: "return", msg: "" },
-  { src: "verify", dst: "coord", verb: "return", msg: "" },
-  { src: "coord", dst: "analyst", verb: "dispatch", msg: "synthesize" },
+  { src: "research", dst: "verify", verb: "handoff", msg: "attach findings" },
+  { src: "verify", dst: "analyst", verb: "handoff", msg: "verified claims" },
   { src: "analyst", dst: "coord", verb: "return", msg: "" },
   { src: "coord", dst: "user", verb: "deliver", msg: "" },
 ];

@@ -6,7 +6,8 @@
  *   2. Wait until all peers are in the registry.
  *   3. Poll AXL /recv for DISPATCH messages addressed to us.
  *   4. Call the LLM with our role-specific system prompt.
- *   5. Send the result back to coord via AXL /send.
+ *   5. Either forward the task to the next peer in the route, or return the
+ *      final analyst result to coord.
  *
  * Each worker is a separate Node.js process running its own AXL node
  * on a distinct port. Communication is real AXL peer-to-peer — we never
@@ -18,9 +19,11 @@ import {
   registerSelf,
   waitForAllPeers,
   lookupPubkey,
+  type PeerRegistry,
 } from "../axl/registry.js";
 import { callLlm } from "../llm/client.js";
 import type {
+  ChainTraceEntry,
   DispatchPayload,
   NodeId,
   PeerlaneMessage,
@@ -60,8 +63,6 @@ export async function runWorker(cfg: WorkerConfig): Promise<void> {
       .map(([r, v]) => `${r}=${short(v!.pubkey)}`)
       .join(" "));
 
-  const coordPubkey = lookupPubkey(registry, "coord");
-
   // Enter receive loop.
   const abort = new AbortController();
   const shutdown = () => abort.abort();
@@ -80,7 +81,7 @@ export async function runWorker(cfg: WorkerConfig): Promise<void> {
         log(role, "ignoring message not for us, to =", msg.to);
         return;
       }
-      await handleDispatch(axl, cfg, coordPubkey, msg);
+      await handleDispatch(axl, cfg, registry, msg);
     },
     (err) => log(role, "recv error:", err.message),
     abort.signal,
@@ -92,7 +93,7 @@ export async function runWorker(cfg: WorkerConfig): Promise<void> {
 async function handleDispatch(
   axl: AxlClient,
   cfg: WorkerConfig,
-  coordPubkey: string,
+  registry: PeerRegistry,
   incoming: PeerlaneMessage,
 ): Promise<void> {
   const payload = incoming.payload as DispatchPayload;
@@ -118,7 +119,47 @@ async function handleDispatch(
     result = { text: "", error: msg };
   }
 
-  // Reply to coord via AXL.
+  const priorFindings = { ...(payload.priorFindings ?? {}), [role]: result.text };
+  const contributions = { ...(payload.contributions ?? {}), [role]: result.text };
+  const trace = [...(payload.trace ?? []), traceFrom(incoming)];
+
+  if (!result.error) {
+    const [next, ...remainingRoute] = payload.route ?? [];
+    if (next) {
+      const forward: PeerlaneMessage = {
+        v: 1,
+        mid: crypto.randomUUID(),
+        taskId: incoming.taskId,
+        parentMid: incoming.mid,
+        from: role,
+        to: next.node,
+        type: "DISPATCH",
+        verb: next.verb,
+        payload: {
+          question: payload.question,
+          context: payload.context,
+          priorFindings,
+          contributions,
+          route: remainingRoute,
+          trace,
+        } satisfies DispatchPayload,
+        ts: new Date().toISOString(),
+      };
+
+      try {
+        await axl.send(lookupPubkey(registry, next.node), forward);
+        log(role, `FORWARD sent task=${incoming.taskId} to=${next.node} verb="${next.verb}"`);
+        return;
+      } catch (err) {
+        const msg = (err as Error).message;
+        log(role, "AXL forward failed:", msg);
+        result = { text: "", error: msg };
+      }
+    }
+  }
+
+  // Only the final hop returns to coord. Earlier workers forward directly to
+  // the next peer, so coord is no longer orchestrating every subtask.
   const reply: PeerlaneMessage = {
     v: 1,
     mid: crypto.randomUUID(),
@@ -128,12 +169,16 @@ async function handleDispatch(
     to: "coord",
     type: result.error ? "ERROR" : "RETURN",
     verb: `${role}.result`,
-    payload: result,
+    payload: {
+      ...result,
+      contributions,
+      trace,
+    } satisfies ReturnPayload,
     ts: new Date().toISOString(),
   };
 
   try {
-    await axl.send(coordPubkey, reply);
+    await axl.send(lookupPubkey(registry, "coord"), reply);
     log(role, `RETURN sent for task=${incoming.taskId}`);
   } catch (err) {
     log(role, "AXL send failed:", (err as Error).message);
@@ -171,4 +216,15 @@ async function waitForAxlReady(axl: AxlClient, timeoutMs = 30_000): Promise<stri
 
 function short(pk: string): string {
   return pk.length > 10 ? pk.slice(0, 8) + "…" : pk;
+}
+
+function traceFrom(message: PeerlaneMessage): ChainTraceEntry {
+  return {
+    mid: message.mid,
+    from: message.from,
+    to: message.to,
+    type: message.type,
+    verb: message.verb,
+    ts: message.ts,
+  };
 }

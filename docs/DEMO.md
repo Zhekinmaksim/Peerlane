@@ -34,23 +34,22 @@ Click **run**.
 The UI should react immediately:
 - Mesh view starts scrolling through steps
 - Node badges light up in amber as they become busy
-- First research+verify dispatches go out in parallel
+- The route starts at research, then continues worker-to-worker
 
 ---
 
 ## Beat 3 — narrate the chain (25s)
 
-> "Watch the Mesh column. The coordinator first dispatches to research —
-> step 01 — and waits for the reply over AXL. When research comes back,
-> coord dispatches to verify, this time with the research findings
-> attached. Each node only lights up when its round-trip is in flight."
+> "Watch the Mesh column. The coordinator only starts the route by
+> dispatching to research. Research then sends directly to verify over AXL,
+> verify sends directly to analyst, and only analyst returns to coord."
 
 Point to the glowing active row (orange left-border).
-Point to the node badge in the header turning amber as verify works.
+Point to the worker-to-worker rows: research → verify, then verify → analyst.
 
-> "This is the whole point: every dispatch, every return is a real
-> peer-to-peer message over the AXL mesh. Coord is not proxying — it's
-> just another peer that happens to own the HTTP front door."
+> "This is the whole point: coord is not a central task broker. It owns
+> the HTTP front door, but the worker path is peer-to-peer:
+> research to verify to analyst."
 
 ---
 
@@ -61,7 +60,7 @@ Click the **trace** footer to expand.
 > "Here's the proof this isn't a mock. Every row is one AXL message — from,
 > to, verb, timestamp. If you SSH into any of the four containers right now,
 > `curl localhost:9012/topology` gives you that node's own pubkey.
-> The coordinator can't see worker → worker traffic; it doesn't flow through it."
+> Worker handoffs are not routed through a central HTTP service."
 
 ---
 

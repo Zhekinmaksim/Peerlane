@@ -35,8 +35,9 @@ flowchart LR
     UI <-->|HTTP + WebSocket| coord_agent
 
     coord_axl <-->|Yggdrasil mesh<br/>E2E encrypted| research_axl
-    coord_axl <-->|Yggdrasil mesh<br/>E2E encrypted| verify_axl
-    coord_axl <-->|Yggdrasil mesh<br/>E2E encrypted| analyst_axl
+    research_axl <-->|Yggdrasil mesh<br/>E2E encrypted| verify_axl
+    verify_axl <-->|Yggdrasil mesh<br/>E2E encrypted| analyst_axl
+    analyst_axl <-->|Yggdrasil mesh<br/>E2E encrypted| coord_axl
 ```
 
 ## Task flow
@@ -53,32 +54,24 @@ sequenceDiagram
     UI->>Coord: POST /task { question }
     Coord->>UI: WS task_started
 
-    Note over Coord,AAXL: Research first — only depends on the question
+    Note over Coord,AAXL: Coord starts the route; workers hand off directly
     Coord->>CAXL: POST /send (DISPATCH → research)
     CAXL->>RAXL: Yggdrasil peer msg
     RAXL-->>Research agent: GET /recv
-    Research agent->>RAXL: POST /send (RETURN → coord)
-    RAXL->>CAXL: Yggdrasil peer msg
-    CAXL->>Coord: GET /recv
-    Coord->>UI: WS contribution + step_update
 
-    Note over Coord,AAXL: Verify cross-references the research result
-    Coord->>CAXL: POST /send (DISPATCH → verify)<br/>with research findings
-    CAXL->>VAXL: Yggdrasil peer msg
+    Research agent->>RAXL: POST /send (DISPATCH → verify)<br/>with research findings
+    RAXL->>VAXL: Yggdrasil peer msg
     VAXL-->>Verify agent: GET /recv
-    Verify agent->>VAXL: POST /send (RETURN → coord)
-    VAXL->>CAXL: Yggdrasil peer msg
-    CAXL->>Coord: GET /recv
-    Coord->>UI: WS contribution + step_update
 
-    Note over Coord,AAXL: Analyst synthesizes verified findings
-    Coord->>CAXL: POST /send (DISPATCH → analyst)<br/>with research + verify findings
-    CAXL->>AAXL: Yggdrasil peer msg
+    Verify agent->>VAXL: POST /send (DISPATCH → analyst)<br/>with verified findings
+    VAXL->>AAXL: Yggdrasil peer msg
     AAXL-->>Analyst agent: GET /recv
+
     Analyst agent->>AAXL: POST /send (RETURN → coord)
     AAXL->>CAXL: Yggdrasil peer msg
     CAXL->>Coord: GET /recv
 
+    Coord->>UI: WS contribution + step_update
     Coord->>UI: WS task_complete
 ```
 
@@ -115,12 +108,11 @@ blocks until all four roles have written. This takes ~1s and produces
 an inspectable manifest.
 
 **Coord-as-HTTP-gateway, not broker.** The coordinator agent terminates
-the frontend's HTTP+WS connection, but all agent-to-agent traffic goes
-over AXL. The coordinator doesn't proxy, route, or mediate messages
-between workers. If the verifier wanted to message the analyst directly,
-it could — the mesh allows it.
+the frontend's HTTP+WS connection and starts the route, but it does not
+orchestrate each worker step. Research forwards directly to verify; verify
+forwards directly to analyst; analyst returns directly to coord.
 
-**Sequential dependency chain.** Research → verify → analyst. Verify
-needs research findings to cross-check; analyst needs both to synthesize
-a report. The UI timeline makes the chain visible — each step's active
-row glows amber as its AXL round-trip is in flight.
+**Direct dependency chain.** Research → verify → analyst. Verify needs
+research findings to cross-check; analyst needs both to synthesize a
+report. The route is carried inside the AXL payload so every worker knows
+only its next peer, not the whole orchestration state.

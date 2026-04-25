@@ -11,23 +11,27 @@ at ETHGlobal Open Agents.
 
 ## What it does
 
-You submit one task from the UI. The coordinator dispatches subtasks
-to a researcher, a verifier, and an analyst, each running on its own
-AXL node. The UI shows live cross-node execution, the final synthesized
-result, and a complete trace of every peer-to-peer message.
+You submit one task from the UI. The coordinator starts the route, then
+the workers hand the task to each other directly over AXL:
+
+`coord -> research -> verify -> analyst -> coord`
+
+The UI shows cross-node execution, the final synthesized result, and a
+trace of the peer-to-peer messages used to complete the task.
 
 Four agents:
 
 | Role        | What it does                                            | AXL port |
 | :---------- | :------------------------------------------------------ | :------- |
-| `coord`     | Accepts user tasks; orchestrates the workflow           | `9002`   |
+| `coord`     | Accepts user tasks; starts the route; returns results   | `9002`   |
 | `research`  | Gathers facts and primary sources                       | `9012`   |
 | `verify`    | Cross-references claims; flags low-confidence data      | `9022`   |
 | `analyst`   | Synthesizes verified findings into a final report       | `9032`   |
 
 Each role is a **separate OS process** running its own AXL node binary and
-its own Node.js agent. All inter-agent traffic goes over the AXL mesh —
-no shared in-process state, no centralized message bus.
+its own Node.js agent. Worker-to-worker handoffs go over the AXL mesh —
+no shared in-process state, no centralized message bus, and no coordinator
+proxy for the research -> verify -> analyst path.
 
 ---
 
@@ -142,9 +146,9 @@ curl -s http://127.0.0.1:9012/topology | jq .   # research
 ```
 Each returns a different `our_public_key`.
 
-**3. Watch the trace.** The UI's trace drawer shows every `PeerlaneMessage`
-as it crosses the mesh — timestamps, sender pubkey, receiver pubkey, verb.
-Expand the drawer during a run.
+**3. Watch the trace.** The UI's trace drawer shows the route:
+`coord -> research`, `research -> verify`, `verify -> analyst`,
+`analyst -> coord`.
 
 ---
 
@@ -157,8 +161,10 @@ The Gensyn prize has two hard requirements:
 
 Every message between agents is serialized as JSON and sent through
 `POST /send` on the sender's AXL node, then delivered to the recipient
-via `GET /recv` on their AXL node. We never proxy through an HTTP service,
-a message queue, or any other transport.
+via `GET /recv` on their AXL node. Research sends directly to verify;
+verify sends directly to analyst; analyst sends directly back to coord.
+We never proxy those handoffs through an HTTP service, a message queue,
+or any other transport.
 
 > Must demonstrate communication across separate AXL nodes, not just in-process.
 
