@@ -100,7 +100,7 @@ demo video and technical verification.
 
 Live preview:
 
-https://frontend-jade-seven-34.vercel.app
+https://www.peerlane.xyz/
 
 Recommended Vercel settings:
 
