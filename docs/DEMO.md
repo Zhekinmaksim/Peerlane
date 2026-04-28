@@ -7,7 +7,7 @@ A tight walkthrough for judges. Every beat earns its time.
 - Terminal 1: `docker compose up` running, all 4 agents settled, "HTTP+WS listening on :8080" visible
 - Terminal 2: `tail -f logs/agent-*.log` (optional — makes the cross-node traffic tangible)
 - Browser: http://localhost:5173 loaded; "● connected" badge green; four node names in the header
-- Have two prompts ready to paste
+- Start in **Demo** mode for the clean walkthrough
 
 ---
 
@@ -32,7 +32,7 @@ A tight walkthrough for judges. Every beat earns its time.
 
 ## Beat 2 — submit a task (15s)
 
-Paste into the Task field:
+Use the **Token claim** preset, or paste into the Task field:
 
 > *"Estimate the 2026 market for on-chain AI inference infrastructure.
 >  Flag anything that can't be cross-verified."*
@@ -62,6 +62,8 @@ Point to the worker-to-worker rows: research → verify, then verify → analyst
 ---
 
 ## Beat 4 — proof this is really P2P (20s)
+
+Switch to **Proof** mode.
 
 Click the **trace** footer to expand.
 

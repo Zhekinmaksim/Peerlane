@@ -37,6 +37,20 @@ const NODES: { id: NodeId; name: string; port: number }[] = [
 ];
 
 const WORKFLOWS = ["research brief", "due diligence", "source comp.", "code review"];
+const PRESETS = [
+  {
+    label: "Contract risk",
+    prompt: "Review the risk profile of an Ethereum smart contract from its address, docs, and public signals. Flag anything that cannot be verified.",
+  },
+  {
+    label: "Token claim",
+    prompt: "Verify this crypto market claim with sources: AI inference networks will become a top infrastructure narrative in 2026.",
+  },
+  {
+    label: "Protocol DD",
+    prompt: "Run due diligence on a decentralized compute protocol: summarize traction, technical risk, token risk, and open questions.",
+  },
+];
 
 // Step template. Indices must match coordinator.ts stepUpdate() calls.
 const STEP_TEMPLATE: Omit<PipelineStep, "state">[] = [
@@ -75,6 +89,7 @@ export default function Peerlane() {
   const [contribs, setContribs] = useState<Partial<Record<NodeId, string>>>({});
   const [copied, setCopied] = useState(false);
   const [proofCopied, setProofCopied] = useState(false);
+  const [viewMode, setViewMode] = useState<"demo" | "proof">("demo");
   const [error, setError] = useState<string | null>(null);
   const [topology, setTopology] = useState<Record<NodeId, {
     pubkey: string;
@@ -308,7 +323,7 @@ export default function Peerlane() {
             fontSize: 11, color: "var(--c-dim)", marginLeft: 6,
             borderLeft: "1px solid var(--c-line)", paddingLeft: 10,
           }}>
-            axl mesh · 4 nodes
+            four axl agents verify one task without a central worker broker
           </span>
           <span style={{
             fontSize: 10, marginLeft: 8,
@@ -319,7 +334,27 @@ export default function Peerlane() {
             {connected ? "● connected" : "○ disconnected"}
           </span>
         </div>
-        <div style={{ display: "flex" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex" }}>
+            {(["demo", "proof"] as const).map((mode, i) => (
+              <button
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                style={{
+                  padding: "4px 10px",
+                  fontSize: 11,
+                  border: "1px solid var(--c-line)",
+                  marginLeft: i > 0 ? -1 : 0,
+                  background: viewMode === mode ? "var(--c-ink)" : "var(--c-paper)",
+                  color: viewMode === mode ? "var(--c-bg)" : "var(--c-ink-2)",
+                  cursor: "pointer",
+                  fontWeight: viewMode === mode ? 600 : 400,
+                }}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
           {NODES.map((n, i) => (
             <div key={n.id} style={{
               padding: "4px 12px", fontSize: 12,
@@ -350,12 +385,33 @@ export default function Peerlane() {
         }}>
           <span style={{ fontSize: 11, color: "var(--c-dim)", fontWeight: 500 }}>Task</span>
           <textarea
-            rows={6}
+            rows={5}
             placeholder="describe a task for the network"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={running}
           />
+
+          <div style={{ display: "grid", gap: 5 }}>
+            {PRESETS.map((preset) => (
+              <button
+                key={preset.label}
+                onClick={() => setInput(preset.prompt)}
+                disabled={running}
+                style={{
+                  textAlign: "left",
+                  padding: "6px 8px",
+                  fontSize: 11,
+                  background: "var(--c-paper)",
+                  border: "1px solid var(--c-line-soft)",
+                  color: "var(--c-ink-2)",
+                  cursor: running ? "default" : "pointer",
+                }}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 11, color: "var(--c-dim)", flexShrink: 0 }}>wf</span>
@@ -406,37 +462,50 @@ export default function Peerlane() {
             </button>
           </div>
 
-          <div style={{
-            marginTop: 4, paddingTop: 10, borderTop: "1px solid var(--c-line-soft)",
-            fontSize: 11, color: "var(--c-dim)", lineHeight: 1.8,
-          }}>
-            <div style={{ color: "var(--c-ink-2)", marginBottom: 4, fontWeight: 500 }}>topology</div>
-            route <span style={{ color: "var(--c-ink)" }}>coord → research → verify → analyst → coord</span><br />
-            transport <span style={{ color: "var(--c-ink)" }}>axl / yggdrasil</span><br />
-            identity <span style={{ color: "var(--c-ink)" }}>node pubkeys</span><br />
-            protocol <span style={{ color: "var(--c-ink)" }}>a2a 1.0 + mcp tools</span><br />
-            broker <span style={{ color: "var(--c-accent)" }}>none</span>
-          </div>
-
-          <div style={{
-            paddingTop: 10, borderTop: "1px solid var(--c-line-soft)",
-            fontSize: 10.5, color: "var(--c-dim)", lineHeight: 1.7,
-          }}>
-            <div style={{ color: "var(--c-ink-2)", marginBottom: 5, fontWeight: 500 }}>node identity</div>
-            {NODES.map((n) => (
-              <div key={n.id}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                  <span style={{ color: topology[n.id]?.online ? "var(--c-ink)" : "var(--c-mute)" }}>{n.id}</span>
-                  <span title={topology[n.id]?.pubkey} style={{ color: "var(--c-dim)" }}>
-                    {shortKey(topology[n.id]?.pubkey)}
-                  </span>
-                </div>
-                <div style={{ color: "var(--c-mute)", paddingLeft: 8, marginBottom: 2 }}>
-                  {topology[n.id]?.capabilities.join(", ") || "no capabilities"}
-                </div>
+          {viewMode === "proof" ? (
+            <>
+              <div style={{
+                marginTop: 4, paddingTop: 10, borderTop: "1px solid var(--c-line-soft)",
+                fontSize: 11, color: "var(--c-dim)", lineHeight: 1.8,
+              }}>
+                <div style={{ color: "var(--c-ink-2)", marginBottom: 4, fontWeight: 500 }}>topology</div>
+                route <span style={{ color: "var(--c-ink)" }}>coord → research → verify → analyst → coord</span><br />
+                transport <span style={{ color: "var(--c-ink)" }}>axl / yggdrasil</span><br />
+                identity <span style={{ color: "var(--c-ink)" }}>node pubkeys</span><br />
+                protocol <span style={{ color: "var(--c-ink)" }}>a2a 1.0 + mcp tools</span><br />
+                broker <span style={{ color: "var(--c-accent)" }}>none</span>
               </div>
-            ))}
-          </div>
+
+              <div style={{
+                paddingTop: 10, borderTop: "1px solid var(--c-line-soft)",
+                fontSize: 10.5, color: "var(--c-dim)", lineHeight: 1.7,
+              }}>
+                <div style={{ color: "var(--c-ink-2)", marginBottom: 5, fontWeight: 500 }}>node identity</div>
+                {NODES.map((n) => (
+                  <div key={n.id}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                      <span style={{ color: topology[n.id]?.online ? "var(--c-ink)" : "var(--c-mute)" }}>{n.id}</span>
+                      <span title={topology[n.id]?.pubkey} style={{ color: "var(--c-dim)" }}>
+                        {shortKey(topology[n.id]?.pubkey)}
+                      </span>
+                    </div>
+                    <div style={{ color: "var(--c-mute)", paddingLeft: 8, marginBottom: 2 }}>
+                      {topology[n.id]?.capabilities.join(", ") || "no capabilities"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div style={{
+              marginTop: 4, paddingTop: 10, borderTop: "1px solid var(--c-line-soft)",
+              fontSize: 11, color: "var(--c-dim)", lineHeight: 1.8,
+            }}>
+              <div style={{ color: "var(--c-ink-2)", marginBottom: 4, fontWeight: 500 }}>route</div>
+              <span style={{ color: "var(--c-ink)" }}>coord → research → verify → analyst → coord</span><br />
+              broker <span style={{ color: "var(--c-accent)" }}>none</span>
+            </div>
+          )}
         </div>
 
         {/* CENTER — Mesh */}
@@ -640,9 +709,11 @@ export default function Peerlane() {
                             fontWeight: 600, display: "flex", justifyContent: "space-between", gap: 8,
                           }}>
                             <span>{nid}</span>
-                            <span title={topology[nid as NodeId]?.pubkey} style={{ color: "var(--c-dim)", fontWeight: 400 }}>
-                              {shortKey(topology[nid as NodeId]?.pubkey)}
-                            </span>
+                            {viewMode === "proof" && (
+                              <span title={topology[nid as NodeId]?.pubkey} style={{ color: "var(--c-dim)", fontWeight: 400 }}>
+                                {shortKey(topology[nid as NodeId]?.pubkey)}
+                              </span>
+                            )}
                           </div>
                           <div style={{
                             fontSize: 11, color: "var(--c-ink-2)", lineHeight: 1.6,
@@ -670,7 +741,10 @@ export default function Peerlane() {
             color: "var(--c-ink-2)", fontSize: 11, fontWeight: 500,
           }}
         >
-          <span>trace · <span style={{ color: "var(--c-ink)" }}>{log.length}</span> events · direct axl proof</span>
+          <span>
+            {viewMode === "proof" ? "trace proof" : "trace"} · <span style={{ color: "var(--c-ink)" }}>{log.length}</span> events
+            {viewMode === "proof" ? " · direct axl proof" : ""}
+          </span>
           <span style={{
             transition: "transform 0.15s",
             transform: showTrace ? "rotate(180deg)" : "none",
@@ -705,18 +779,25 @@ export default function Peerlane() {
                     <span style={{ margin: "0 8px", color: "var(--c-mute)" }}>·</span>
                     axl msgs <span style={{ color: "var(--c-ink)" }}>{log.filter((e) => e.mid).length}</span>
                     <span style={{ margin: "0 8px", color: "var(--c-mute)" }}>·</span>
-                    gossip <span style={{ color: "var(--c-ink)" }}>{log.filter((e) => e.type === "GOS").length}</span>
+                    {viewMode === "proof" && (
+                      <>
+                        <span style={{ margin: "0 8px", color: "var(--c-mute)" }}>·</span>
+                        gossip <span style={{ color: "var(--c-ink)" }}>{log.filter((e) => e.type === "GOS").length}</span>
+                      </>
+                    )}
                   </span>
-                  <button
-                    onClick={copyProof}
-                    style={{
-                      fontSize: 11, padding: "3px 10px", background: "var(--c-paper)",
-                      border: "1px solid var(--c-line)",
-                      color: proofCopied ? "var(--c-ok)" : "var(--c-ink-2)", cursor: "pointer",
-                    }}
-                  >
-                    {proofCopied ? "proof copied" : "copy proof"}
-                  </button>
+                  {viewMode === "proof" && (
+                    <button
+                      onClick={copyProof}
+                      style={{
+                        fontSize: 11, padding: "3px 10px", background: "var(--c-paper)",
+                        border: "1px solid var(--c-line)",
+                        color: proofCopied ? "var(--c-ok)" : "var(--c-ink-2)", cursor: "pointer",
+                      }}
+                    >
+                      {proofCopied ? "proof copied" : "copy proof"}
+                    </button>
+                  )}
                 </div>
                 <table style={{
                   width: "100%", borderCollapse: "collapse",
@@ -732,8 +813,12 @@ export default function Peerlane() {
                       <th style={{ textAlign: "left", fontWeight: 500, width: 14 }}></th>
                       <th style={{ textAlign: "left", fontWeight: 500, width: 82 }}>to</th>
                       <th style={{ textAlign: "left", fontWeight: 500, width: 50 }}>type</th>
-                      <th style={{ textAlign: "left", fontWeight: 500, width: 118 }}>mcp tool</th>
-                      <th style={{ textAlign: "left", fontWeight: 500, width: 130 }}>message id</th>
+                      {viewMode === "proof" && (
+                        <>
+                          <th style={{ textAlign: "left", fontWeight: 500, width: 118 }}>mcp tool</th>
+                          <th style={{ textAlign: "left", fontWeight: 500, width: 130 }}>message id</th>
+                        </>
+                      )}
                       <th style={{ textAlign: "left", fontWeight: 500 }}>detail</th>
                     </tr>
                   </thead>
@@ -749,10 +834,14 @@ export default function Peerlane() {
                           {e.dst}
                         </td>
                         <td style={{ color: "var(--c-accent)", fontWeight: 600 }}>{e.type}</td>
-                        <td style={{ color: "var(--c-dim)" }}>{e.mcpTool?.replace("peerlane.", "") ?? "—"}</td>
-                        <td title={e.parentMid ? `parent: ${e.parentMid}` : undefined} style={{ color: "var(--c-dim)" }}>
-                          {e.mid ? e.mid.slice(0, 8) : "local"}
-                        </td>
+                        {viewMode === "proof" && (
+                          <>
+                            <td style={{ color: "var(--c-dim)" }}>{e.mcpTool?.replace("peerlane.", "") ?? "—"}</td>
+                            <td title={e.parentMid ? `parent: ${e.parentMid}` : undefined} style={{ color: "var(--c-dim)" }}>
+                              {e.mid ? e.mid.slice(0, 8) : "local"}
+                            </td>
+                          </>
+                        )}
                         <td style={{
                           color: "var(--c-ink-2)", maxWidth: 400,
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",

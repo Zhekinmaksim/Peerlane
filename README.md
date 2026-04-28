@@ -24,6 +24,16 @@ the task directly to each other through AXL.
 The UI shows cross-node execution, the final synthesized result, and a
 trace of the peer-to-peer messages used to complete the task.
 
+The frontend has two modes:
+- **Demo** keeps the screen focused on the task, route, agent work, and final
+  result.
+- **Proof** exposes pubkeys, capabilities, MCP tool names, message ids, gossip
+  count, and the copyable verification bundle.
+
+Preset prompts cover crypto/security review, token-claim verification, and
+protocol due diligence so judges can start a realistic task without inventing
+one live.
+
 Peerlane uses AXL as a custom Agent2Agent-style binding: every inter-agent
 message still travels through AXL `/send` and `/recv`, but the application
 payload includes an A2A `message/send` structure plus MCP-style tool metadata.
