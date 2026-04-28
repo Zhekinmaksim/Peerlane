@@ -107,7 +107,7 @@ export const SAMPLE_LOG: LogEntry[] = [
     mid: "sample-05-research-verify",
     parentMid: "sample-04-verify-research",
     protocol: "message/send",
-    mcpTool: "peerlane.clarify_evidence",
+    mcpTool: "peerlane.clarify_response",
   },
   {
     t: "12:00:01.31",

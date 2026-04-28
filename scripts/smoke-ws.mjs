@@ -8,6 +8,15 @@ const question = process.env.PEERLANE_SMOKE_QUESTION
   ?? "Smoke test: summarize why this Peerlane run proves AXL peer-to-peer communication.";
 const required = new Set(["task_started", "message", "contribution", "task_complete"]);
 const seen = new Set();
+const requiredMcpTools = new Set([
+  "peerlane.probe_capability",
+  "peerlane.gather_sources",
+  "peerlane.clarify_evidence",
+  "peerlane.clarify_response",
+  "peerlane.synthesize_report",
+]);
+const seenMcpTools = new Set();
+let sawLiveWorkerStep = false;
 
 const timeoutMs = Number(process.env.PEERLANE_SMOKE_TIMEOUT_MS ?? 90_000);
 const startedAt = Date.now();
@@ -24,7 +33,12 @@ function fail(message) {
 const ws = new WebSocket(wsUrl);
 
 const timer = setTimeout(() => {
-  fail(`timed out after ${timeoutMs}ms; seen events: ${Array.from(seen).join(", ") || "none"}`);
+  fail([
+    `timed out after ${timeoutMs}ms`,
+    `seen events: ${Array.from(seen).join(", ") || "none"}`,
+    `seen mcp: ${Array.from(seenMcpTools).join(", ") || "none"}`,
+    `live worker step: ${sawLiveWorkerStep}`,
+  ].join("; "));
 }, timeoutMs);
 
 ws.on("open", async () => {
@@ -54,8 +68,17 @@ ws.on("message", (raw) => {
     log("event", evt.kind);
   }
 
-  const missing = Array.from(required).filter((kind) => !seen.has(kind));
-  if (missing.length === 0) {
+  if (evt.kind === "message" && evt.message?.protocol?.mcp?.toolName) {
+    seenMcpTools.add(evt.message.protocol.mcp.toolName);
+  }
+
+  if (evt.kind === "step_update" && evt.state === "run" && [2, 3, 4].includes(evt.stepIndex)) {
+    sawLiveWorkerStep = true;
+  }
+
+  const missingEvents = Array.from(required).filter((kind) => !seen.has(kind));
+  const missingMcp = Array.from(requiredMcpTools).filter((tool) => !seenMcpTools.has(tool));
+  if (missingEvents.length === 0 && missingMcp.length === 0 && sawLiveWorkerStep) {
     clearTimeout(timer);
     log(`PASS in ${Date.now() - startedAt}ms`);
     ws.close();
@@ -65,8 +88,14 @@ ws.on("message", (raw) => {
 
 ws.on("error", (err) => fail(err.message));
 ws.on("close", () => {
-  const missing = Array.from(required).filter((kind) => !seen.has(kind));
-  if (missing.length > 0) {
-    fail(`socket closed before required events; missing: ${missing.join(", ")}`);
+  const missingEvents = Array.from(required).filter((kind) => !seen.has(kind));
+  const missingMcp = Array.from(requiredMcpTools).filter((tool) => !seenMcpTools.has(tool));
+  if (missingEvents.length > 0 || missingMcp.length > 0 || !sawLiveWorkerStep) {
+    fail([
+      "socket closed before required proof",
+      `missing events: ${missingEvents.join(", ") || "none"}`,
+      `missing mcp: ${missingMcp.join(", ") || "none"}`,
+      `live worker step: ${sawLiveWorkerStep}`,
+    ].join("; "));
   }
 });

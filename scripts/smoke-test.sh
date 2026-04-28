@@ -9,7 +9,8 @@
 #   4. WebSocket emits task_started, message, contribution, task_complete
 #   5. registry contains 4 distinct peers
 #   6. registry contains A2A Agent Cards + advertised capabilities
-#   7. compose logs show direct worker handoffs and at least one gossip broadcast
+#   7. WebSocket proof includes MCP tool names and live worker step updates
+#   8. compose logs show direct worker handoffs and at least one gossip broadcast
 
 set -euo pipefail
 
@@ -26,7 +27,7 @@ if [ ! -f .env ]; then
 fi
 
 echo ">>> starting docker compose in mock LLM mode"
-env -u ANTHROPIC_API_KEY docker compose up -d --build
+ANTHROPIC_API_KEY= PEERLANE_MOCK_LLM=1 docker compose up -d --build
 
 echo ">>> waiting for coord healthcheck"
 for _ in $(seq 1 60); do

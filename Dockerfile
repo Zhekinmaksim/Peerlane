@@ -10,7 +10,10 @@
 FROM golang:1.25.5-bookworm AS axl-builder
 
 WORKDIR /src
+ARG AXL_COMMIT=9cba555ff0b8e14ebf1244ae02b274fbc4ec044e
 RUN git clone --depth 1 https://github.com/gensyn-ai/axl.git .
+RUN git checkout "$AXL_COMMIT" \
+ && test "$(git rev-parse HEAD)" = "$AXL_COMMIT"
 RUN GOTOOLCHAIN=auto go build -o /out/node ./cmd/node/
 
 

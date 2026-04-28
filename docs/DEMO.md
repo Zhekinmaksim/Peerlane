@@ -1,136 +1,116 @@
-# Demo — 90 seconds
+# Demo — 3 minutes
 
-A tight walkthrough for judges. Every beat earns its time.
+A focused walkthrough for ETHGlobal judges. The goal is to show utility first,
+then prove the AXL depth without turning the video into a terminal session.
 
-For a subtitle-ready recording plan, see
+For subtitle timing, see
 [`docs/DEMO_VIDEO_SCRIPT.md`](DEMO_VIDEO_SCRIPT.md).
 
-## Pre-roll (before recording)
+## Pre-roll
 
-- Terminal 1: `docker compose up` running, all 4 agents settled, "HTTP+WS listening on :8080" visible
-- Terminal 2: `tail -f logs/agent-*.log` (optional — makes the cross-node traffic tangible)
-- Browser: http://localhost:5173 loaded; "● connected" badge green; four node names in the header
-- Start in **Demo** mode for the clean walkthrough
+- Terminal 1: `docker compose up` running, all 4 agents settled, `HTTP+WS listening on :8080` visible.
+- Browser: `http://localhost:5173` loaded, badge says `live mesh`, four node names visible in the header.
+- Start in **Demo** mode.
+- Keep one terminal tab ready for registry, topology, and log proof.
 
----
+## Beat 1 — hook (20s)
 
-## Beat 1 — what Peerlane is (10s)
+> Most multi-agent demos are still centralized. Peerlane shows four AI agents
+> completing one task across four separate Gensyn AXL nodes, with no central
+> worker broker.
 
-> "Peerlane is a peer-to-peer workspace for AI agents. Four specialists —
-> coordinator, researcher, verifier, analyst — each runs on its own AXL node.
-> The UI you're looking at is driven entirely by live messages flowing
-> through the mesh."
+Point to `coord`, `research`, `verify`, and `analyst`.
 
-> "The simple version: this is not three backend functions called in sequence.
-> These are four node identities. Coord starts the task, then the workers pass
-> it directly to each other."
+> Each role is its own process, AXL node, public key, and capability card.
+> Coord receives the browser task, but the workers hand off directly.
 
-[Point to the four node badges and the node identity list with short pubkeys.]
+## Beat 2 — submit a useful task (35s)
 
-> "Each node advertises capabilities in the registry, like `research.market`
-> and `verify.claims`. Coord chooses the route from those capabilities, then
-> sends an A2A-style `message/send` payload through AXL."
+Click **Protocol DD** or paste:
 
----
-
-## Beat 2 — submit a task (15s)
-
-Use the **Token claim** preset, or paste into the Task field:
-
-> *"Estimate the 2026 market for on-chain AI inference infrastructure.
->  Flag anything that can't be cross-verified."*
+```text
+Run due diligence on a decentralized AI compute protocol:
+summarize traction, technical risk, token risk, and open questions.
+```
 
 Click **run**.
 
-The UI should react immediately:
-- Mesh view starts scrolling through steps
-- Node badges light up in amber as they become busy
-- The route starts at research, then continues worker-to-worker
+> Coord discovers the research capability from the registry, probes research
+> through AXL's native A2A bridge, then sends the first AXL message.
 
----
+## Beat 3 — narrate live peer-to-peer handoffs (60s)
 
-## Beat 3 — narrate the chain (25s)
+Watch the Mesh column and point at rows as they change.
 
-> "Watch the Mesh column. The coordinator only starts the route by
-> dispatching to research. Research then sends directly to verify over AXL,
-> verify sends directly to analyst, and only analyst returns to coord."
+> Research gathers context and gossips progress to the mesh. Then research
+> forwards directly to verify over AXL. Coord is observing the proof signal,
+> not brokering the worker route.
 
-Point to the glowing active row (orange left-border).
-Point to the worker-to-worker rows: research → verify, then verify → analyst.
+When clarify rows appear:
 
-> "This is the whole point: coord is not a central task broker. It owns
-> the HTTP front door, but the worker path is peer-to-peer:
-> research to verify to analyst."
+> Verify can negotiate with research directly. It sends `CLARIFY`, receives
+> `CLARIFY_RESPONSE`, and only then forwards verified claims to analyst.
 
----
+When the output appears:
 
-## Beat 4 — proof this is really P2P (20s)
+> Analyst returns the final report to coord. The output includes separate
+> research, verification, and synthesis contributions.
 
-Switch to **Proof** mode.
+Open **agent breakdown** briefly.
 
-Click the **trace** footer to expand.
+## Beat 4 — proof mode (45s)
 
-> "Here's the proof this isn't a mock. Every row is one AXL message — from,
-> to, verb, timestamp, and message id. The node pubkeys are visible on the
-> left and attached to the agent breakdown. The MCP tool column shows the
-> structured tool intent carried inside the A2A payload. Worker handoffs are
-> not routed through a central HTTP service."
+Switch to **Proof** mode and expand the trace footer.
+
+> Proof mode shows this is real AXL traffic: sender, receiver, message id,
+> parent id, timestamp, MCP tool intent, gossip, Agent Cards, capabilities,
+> and distinct AXL pubkeys.
 
 Click **copy proof**.
 
-> "This copies the route, node pubkeys, and message ids into a judge-friendly
-> verification log."
+> This copies a judge-verifiable bundle with route, pubkeys, message ids,
+> MCP tool names, and terminal verification commands.
 
-Point to the gossip count.
+## Beat 5 — terminal proof (30s)
 
-> "Workers also gossip intermediate results to peers. The main route stays
-> direct, but the mesh gets broadcast state after each step."
-
-Point to the clarify rows if visible.
-
-> "Verify can also negotiate directly with research. It sends a clarify request
-> over AXL, gets a response, and only then forwards the verified result to
-> analyst."
-
-If asked to prove it from the terminal:
+Show only the highest-signal commands:
 
 ```bash
-docker compose logs --no-color coord research verify analyst | rg 'DISPATCH|FORWARD|RETURN|inbound'
-docker compose logs --no-color coord research verify analyst | rg 'NATIVE_A2A|CLARIFY|GOSSIP'
-docker compose exec -T coord curl -fsS http://127.0.0.1:9002/topology
+docker compose logs --no-color coord research verify analyst | rg 'NATIVE_A2A|DISPATCH|FORWARD|CLARIFY|GOSSIP|RETURN'
 docker compose exec -T coord cat /data/registry/mesh-registry.json
+docker compose exec -T coord curl -fsS http://127.0.0.1:9002/topology
 ```
 
----
+Say:
 
-## Beat 5 — the final output (15s)
+> The terminal confirms the same route from Docker logs, the registry, and AXL
+> topology. The automated smoke test checks the same path in mock LLM mode.
 
-By now the analyst has returned and the Output pane shows the synthesized
-report with a confidence score.
+## Beat 6 — close (10s)
 
-> "The analyst synthesizes a report using the verified findings — never
-> the unverified research on its own. Confidence 0.87 comes from the
-> verifier's own score, which the analyst respected when shaping its prose."
+Return to the UI.
 
-Click **agent breakdown** to show each contribution.
+> Peerlane is a workspace for verifiable peer-to-peer agent work: one screen,
+> four AXL nodes, direct handoffs, inspectable proof.
 
----
+## Q&A backup
 
-## Beat 6 — close (5s)
+If judges ask about failure handling:
 
-> "One screen. Four real AXL nodes. Real task, real mesh traffic.
-> Peerlane."
+```bash
+docker compose stop verify
+```
 
----
+Then submit a task and show the UI surfacing `Timeout waiting for analyst` or
+the blocked route. Restart with:
 
-## What to skip if you're over time
+```bash
+docker compose up -d verify
+```
 
-- Beat 4 (proof of P2P) — the Mesh column already communicates this visually
-- Beat 5 details — the Output pane is self-explanatory
+If judges ask for process isolation:
 
-## What to add if judges ask for depth
-
-- Show `ps aux | grep -E "axl-node|node dist"` — 8 distinct processes
-- Show `docker compose exec -T coord cat /data/registry/mesh-registry.json` — 4 distinct ed25519 pubkeys
-- Kill one worker process mid-run and show the coord surfacing a timeout in the UI
-- Swap in a different workflow (code review, source comparison) — same mesh, different prompts
+```bash
+ps aux | grep -E "axl-node|node dist"
+docker compose exec -T coord cat /data/registry/mesh-registry.json
+```

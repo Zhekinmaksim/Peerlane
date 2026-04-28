@@ -415,7 +415,7 @@ async function handleClarify(
     verb: "clarify_response",
     payload: result,
     ts: new Date().toISOString(),
-  }, "research.market", result.text || result.error || "clarification failed");
+  }, "research.market", result.text || result.error || "clarification failed", "peerlane.clarify_response");
 
   await sendWithRetry(axl, lookupPubkey(registry, incoming.from), reply, (attempt, err) => {
     log(role, `RETRY clarify_response to=${incoming.from} attempt=${attempt}:`, err.message);
@@ -447,7 +447,7 @@ async function requestResearchClarification(
       priorFindings: payload.priorFindings,
     } satisfies ClarifyPayload,
     ts: new Date().toISOString(),
-  }, "verify.claims", payload.question);
+  }, "verify.claims", payload.question, "peerlane.clarify_evidence");
 
   try {
     await sendWithRetry(axl, lookupPubkey(registry, "research"), request, (attempt, err) => {

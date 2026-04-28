@@ -44,7 +44,6 @@ const NODES: { id: NodeId; name: string; port: number }[] = [
   { id: "analyst", name: "analyst", port: 9032 },
 ];
 
-const WORKFLOWS = ["research brief", "due diligence", "source comp.", "code review"];
 const PRESETS = [
   {
     label: "Contract risk",
@@ -86,7 +85,6 @@ function shortKey(pubkey?: string): string {
 
 export default function Peerlane() {
   const [input, setInput] = useState("");
-  const [wf, setWf] = useState(0);
   const [running, setRunning] = useState(false);
   const [pipe, setPipe] = useState<Pipeline | null>(null);
   const [busy, setBusy] = useState<Set<NodeId>>(new Set());
@@ -113,6 +111,8 @@ export default function Peerlane() {
 
   const logRef = useRef<HTMLDivElement | null>(null);
   const meshRef = useRef<HTMLDivElement | null>(null);
+  const isHostedPreview = typeof window !== "undefined" &&
+    !["localhost", "127.0.0.1"].includes(window.location.hostname);
 
   // ── Handle incoming WS events ──
   const onEvent = useCallback((ev: WsEvent) => {
@@ -255,16 +255,62 @@ export default function Peerlane() {
   };
 
   const copyProof = () => {
+    const messages = log.map((e) => ({
+      time: e.t,
+      from: e.src,
+      to: e.dst,
+      type: e.type,
+      verb: e.detail,
+      mid: e.mid,
+      parentMid: e.parentMid,
+      protocol: e.protocol,
+      mcpTool: e.mcpTool,
+    }));
+    const proofJson = {
+      product: "Peerlane",
+      task: {
+        id: pipe?.id ?? "none",
+        text: pipe?.text ?? input,
+        route: "coord -> research -> verify -> analyst -> coord",
+      },
+      nodes: NODES.map((n) => ({
+        id: n.id,
+        port: n.port,
+        online: topology[n.id]?.online ?? false,
+        pubkey: topology[n.id]?.pubkey ?? "",
+        capabilities: topology[n.id]?.capabilities ?? [],
+        agentCard: topology[n.id]?.agentCard,
+      })),
+      messages,
+      verification: {
+        registry: "docker compose exec -T coord cat /data/registry/mesh-registry.json",
+        coordTopology: "docker compose exec -T coord curl -fsS http://127.0.0.1:9002/topology",
+        researchTopology: "docker compose exec -T research curl -fsS http://127.0.0.1:9012/topology",
+        logs: "docker compose logs --no-color coord research verify analyst | rg 'NATIVE_A2A|DISPATCH|FORWARD|CLARIFY|GOSSIP|RETURN'",
+        smoke: "PEERLANE_MOCK_LLM=1 ./scripts/smoke-test.sh",
+      },
+    };
     const lines = [
       "Peerlane AXL proof",
       `task: ${pipe?.id ?? "none"}`,
+      `prompt: ${(pipe?.text ?? input) || "none"}`,
       "route: coord -> research -> verify -> analyst -> coord",
       "",
       "nodes:",
-      ...NODES.map((n) => `${n.id}: ${topology[n.id]?.online ? "online" : "offline"} ${topology[n.id]?.pubkey ?? ""} capabilities=${topology[n.id]?.capabilities.join(",")}`),
+      ...NODES.map((n) => `${n.id}: ${topology[n.id]?.online ? "online" : "offline"} ${topology[n.id]?.pubkey ?? ""} capabilities=${topology[n.id]?.capabilities.join(",")} agentCard=${topology[n.id]?.agentCard?.protocolVersion ?? "none"}`),
       "",
       "messages:",
-      ...log.map((e) => `${e.t} ${e.src}->${e.dst} ${e.type} ${e.detail}${e.protocol ? ` protocol=${e.protocol}` : ""}${e.mcpTool ? ` mcp=${e.mcpTool}` : ""}${e.mid ? ` mid=${e.mid}` : ""}${e.parentMid ? ` parent=${e.parentMid}` : ""}`),
+      ...messages.map((e) => `${e.time} ${e.from}->${e.to} ${e.type} ${e.verb}${e.protocol ? ` protocol=${e.protocol}` : ""}${e.mcpTool ? ` mcp=${e.mcpTool}` : ""}${e.mid ? ` mid=${e.mid}` : ""}${e.parentMid ? ` parent=${e.parentMid}` : ""}`),
+      "",
+      "verify:",
+      proofJson.verification.registry,
+      proofJson.verification.coordTopology,
+      proofJson.verification.researchTopology,
+      proofJson.verification.logs,
+      proofJson.verification.smoke,
+      "",
+      "proof.json:",
+      JSON.stringify(proofJson, null, 2),
     ];
     navigator.clipboard?.writeText(lines.join("\n"));
     setProofCopied(true);
@@ -354,10 +400,10 @@ export default function Peerlane() {
           <span style={{
             fontSize: 10, marginLeft: 8,
             padding: "2px 8px", border: "1px solid var(--c-line)",
-            color: connected ? "var(--c-ok)" : "var(--c-err)",
+            color: connected ? "var(--c-ok)" : isHostedPreview ? "var(--c-accent)" : "var(--c-err)",
             background: connected ? "transparent" : "var(--c-sunk)",
           }}>
-            {connected ? "● connected" : "○ disconnected"}
+            {connected ? "● live mesh" : isHostedPreview ? "○ hosted preview" : "○ disconnected"}
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -410,6 +456,25 @@ export default function Peerlane() {
           background: "var(--c-bg)", overflowY: "auto", minHeight: 0,
         }}>
           <span style={{ fontSize: 11, color: "var(--c-dim)", fontWeight: 500, flexShrink: 0 }}>Task</span>
+          {!connected && (
+            <div style={{
+              padding: "8px 9px",
+              border: "1px solid var(--c-line-soft)",
+              background: isHostedPreview ? "#fff7d6" : "var(--c-sunk)",
+              color: "var(--c-ink-2)",
+              fontSize: 10.5,
+              lineHeight: 1.45,
+              flexShrink: 0,
+            }}>
+              <strong style={{ color: "var(--c-ink)" }}>
+                {isHostedPreview ? "Hosted preview" : "Live mesh offline"}
+              </strong>
+              <br />
+              {isHostedPreview
+                ? "Load recorded AXL proof. Full live mesh runs with Docker Compose."
+                : "Start Docker Compose to submit a live task."}
+            </div>
+          )}
           <textarea
             rows={5}
             placeholder="describe a task for the network"
@@ -440,30 +505,6 @@ export default function Peerlane() {
             ))}
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-            <span style={{ fontSize: 11, color: "var(--c-dim)", flexShrink: 0 }}>wf</span>
-            <div style={{ display: "flex", gap: 0, flex: 1 }}>
-              {WORKFLOWS.map((w, i) => (
-                <button
-                  key={w}
-                  onClick={() => setWf(i)}
-                  disabled={running}
-                  style={{
-                    flex: 1, padding: "6px 0", fontSize: 11,
-                    border: "1px solid var(--c-line)", marginLeft: i > 0 ? -1 : 0,
-                    background: wf === i ? "var(--c-ink)" : "var(--c-paper)",
-                    color: wf === i ? "var(--c-bg)" : "var(--c-ink-2)",
-                    cursor: running ? "default" : "pointer",
-                    fontWeight: wf === i ? 600 : 400,
-                  }}
-                  title={w}
-                >
-                  {w.split(" ").map((word) => word[0]).join("").toUpperCase()}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div style={{ display: "flex", gap: 6, marginTop: "auto", flexShrink: 0 }}>
             <button
               onClick={run}
@@ -487,7 +528,7 @@ export default function Peerlane() {
               }}
               title="Load a recorded proof for the hosted frontend preview"
             >
-              sample
+              {isHostedPreview && !connected ? "recorded proof" : "sample"}
             </button>
             <button
               onClick={reset}
@@ -816,7 +857,6 @@ export default function Peerlane() {
                     route <span style={{ color: "var(--c-ink)" }}>coord → research → verify → analyst → coord</span>
                     <span style={{ margin: "0 8px", color: "var(--c-mute)" }}>·</span>
                     axl msgs <span style={{ color: "var(--c-ink)" }}>{log.filter((e) => e.mid).length}</span>
-                    <span style={{ margin: "0 8px", color: "var(--c-mute)" }}>·</span>
                     {viewMode === "proof" && (
                       <>
                         <span style={{ margin: "0 8px", color: "var(--c-mute)" }}>·</span>

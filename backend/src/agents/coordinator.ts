@@ -116,6 +116,10 @@ class Coordinator {
     log(`inbound ${msg.type} from=${msg.from} task=${msg.taskId}`);
     this.hub.broadcast({ kind: "message", message: msg });
 
+    if (msg.type === "GOSSIP") {
+      this.handleGossipProgress(msg);
+    }
+
     if (msg.type === "RETURN" || msg.type === "ERROR") {
       const key = `${msg.taskId}:${msg.from}`;
       const pending = this.pending.get(key);
@@ -144,6 +148,40 @@ class Coordinator {
       } else {
         pending.resolve(msg.payload as ReturnPayload);
       }
+    }
+  }
+
+  private emitStepUpdate(
+    taskId: string,
+    stepIndex: number,
+    state: "wait" | "run" | "ok" | "err",
+    msg?: string,
+  ): void {
+    this.hub.broadcast({
+      kind: "step_update",
+      taskId,
+      stepIndex,
+      state,
+      msg,
+      ts: new Date().toISOString(),
+    });
+  }
+
+  private handleGossipProgress(msg: PeerlaneMessage): void {
+    const summary = payloadText(msg.payload);
+    if (msg.from === "research") {
+      this.emitStepUpdate(msg.taskId, 1, "ok", "research produced findings");
+      this.emitStepUpdate(msg.taskId, 2, "run", summary || "research handed off to verify");
+      return;
+    }
+    if (msg.from === "verify") {
+      this.emitStepUpdate(msg.taskId, 2, "ok", "verify received research findings");
+      this.emitStepUpdate(msg.taskId, 3, "run", summary || "verify handed off to analyst");
+      return;
+    }
+    if (msg.from === "analyst") {
+      this.emitStepUpdate(msg.taskId, 3, "ok", "analyst received verified claims");
+      this.emitStepUpdate(msg.taskId, 4, "run", summary || "analyst returning synthesis");
     }
   }
 
@@ -214,22 +252,18 @@ class Coordinator {
    */
   async runResearchBrief(question: string): Promise<{ taskId: string; result: string }> {
     const taskId = crypto.randomUUID().slice(0, 8);
-    const ts = () => new Date().toISOString();
     const route = this.planRoute();
     const sourceContext = await buildCryptoSourceContext(question);
 
-    this.hub.broadcast({ kind: "task_started", taskId, question, ts: ts() });
+    this.hub.broadcast({ kind: "task_started", taskId, question, ts: new Date().toISOString() });
 
     // Step indices match the frontend pipeline definition:
     // 0 user→coord, 1 coord→research, 2 research→verify,
     // 3 verify→analyst, 4 analyst→coord, 5 coord→user
-    const stepUpdate = (stepIndex: number, state: "wait" | "run" | "ok" | "err", msg?: string) =>
-      this.hub.broadcast({ kind: "step_update", taskId, stepIndex, state, msg, ts: ts() });
-
-    stepUpdate(0, "ok");
+    this.emitStepUpdate(taskId, 0, "ok");
 
     // Coord only starts the chain. The workers own every following handoff.
-    stepUpdate(1, "run");
+    this.emitStepUpdate(taskId, 1, "run");
     let analystResult: ReturnPayload;
     try {
       const [firstHop, ...remainingRoute] = route;
@@ -256,27 +290,27 @@ class Coordinator {
         } satisfies PeerlaneMessage;
         this.hub.broadcast({
           kind: "message",
-          message: entry.capability ? attachProtocol(message, entry.capability, entry.verb) : message,
+          message: entry.capability ? attachProtocol(message, entry.capability, entry.verb, entry.mcpTool) : message,
         });
       }
 
       const contributions = analystResult.contributions ?? {};
-      stepUpdate(1, "ok");
-      stepUpdate(2, "ok", contributions.research);
-      stepUpdate(3, "ok", contributions.verify);
-      stepUpdate(4, "ok", analystResult.text);
+      this.emitStepUpdate(taskId, 1, "ok");
+      this.emitStepUpdate(taskId, 2, "ok", contributions.research);
+      this.emitStepUpdate(taskId, 3, "ok", contributions.verify);
+      this.emitStepUpdate(taskId, 4, "ok", analystResult.text);
 
       for (const node of ["research", "verify", "analyst"] as const) {
         const text = node === "analyst" ? analystResult.text : contributions[node];
-        if (text) this.hub.broadcast({ kind: "contribution", taskId, node, text, ts: ts() });
+        if (text) this.hub.broadcast({ kind: "contribution", taskId, node, text, ts: new Date().toISOString() });
       }
 
-      stepUpdate(5, "ok");
+      this.emitStepUpdate(taskId, 5, "ok");
       const confidence = extractConfidence(contributions.verify ?? analystResult.text) ?? 0.85;
-      this.hub.broadcast({ kind: "task_complete", taskId, result: analystResult.text, confidence, ts: ts() });
+      this.hub.broadcast({ kind: "task_complete", taskId, result: analystResult.text, confidence, ts: new Date().toISOString() });
     } catch (e) {
-      stepUpdate(1, "err", (e as Error).message);
-      this.hub.broadcast({ kind: "task_error", taskId, error: (e as Error).message, ts: ts() });
+      this.emitStepUpdate(taskId, 1, "err", (e as Error).message);
+      this.hub.broadcast({ kind: "task_error", taskId, error: (e as Error).message, ts: new Date().toISOString() });
       throw e;
     }
 
@@ -339,7 +373,7 @@ class Coordinator {
           verb: "native_a2a_probe",
           payload: { ok, error },
           ts,
-        }, "task.entrypoint", ok ? "native AXL A2A probe ok" : `native AXL A2A probe failed: ${error ?? "unknown"}`),
+        }, "task.entrypoint", ok ? "native AXL A2A probe ok" : `native AXL A2A probe failed: ${error ?? "unknown"}`, "peerlane.probe_capability"),
       });
     };
 
@@ -361,6 +395,12 @@ function extractConfidence(text: string): number | null {
   if (!m) return null;
   const v = Number(m[1]);
   return Number.isFinite(v) && v >= 0 && v <= 1 ? v : null;
+}
+
+function payloadText(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return "";
+  const text = (payload as { text?: unknown }).text;
+  return typeof text === "string" ? text : "";
 }
 
 async function waitForAxlReady(axl: AxlClient, timeoutMs = 30_000): Promise<string> {

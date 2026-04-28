@@ -70,7 +70,7 @@ orchestrator for every worker step.
 The final local smoke test was run with Docker Compose in mock LLM mode:
 
 ```bash
-env -u ANTHROPIC_API_KEY ./scripts/smoke-test.sh
+PEERLANE_MOCK_LLM=1 ./scripts/smoke-test.sh
 ```
 
 The test verifies:
@@ -79,6 +79,8 @@ The test verifies:
 - `http://localhost:5173` serves the UI.
 - A submitted task produces `task_started`, `message`, `contribution`, and
   `task_complete` events.
+- The WebSocket proof includes live worker step updates and MCP tool names for
+  the A2A probe, source gathering, clarification, and synthesis.
 - The shared registry contains four peers: `coord`, `research`, `verify`, and
   `analyst`.
 - Docker logs show direct worker handoffs:

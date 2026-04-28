@@ -1,4 +1,4 @@
-# Peerlane
+# Peerlane — verifiable peer-to-peer AI due diligence
 
 A single-screen peer-to-peer workspace where specialist AI agents collaborate
 across separate [AXL](https://docs.gensyn.ai/tech/agent-exchange-layer) nodes
@@ -34,9 +34,9 @@ Preset prompts cover crypto/security review, token-claim verification, and
 protocol due diligence so judges can start a realistic task without inventing
 one live.
 
-The hosted frontend also has a **sample** button. It loads a recorded proof run
-without requiring the local Docker mesh, so `https://www.peerlane.xyz/` remains
-useful as a public preview even when the live AXL backend is offline.
+The hosted frontend clearly runs as a **public preview**. When the live mesh is
+offline, it shows a **recorded proof** action instead of pretending to submit
+tasks to AXL. The full four-node mesh remains the local Docker Compose demo.
 
 Peerlane uses AXL as a custom Agent2Agent-style binding: every inter-agent
 message still travels through AXL `/send` and `/recv`, but the application
@@ -76,8 +76,14 @@ evidence-quality note, it sends `CLARIFY` to research over AXL and waits for
 ## Requirements
 
 - **Docker + Compose** (recommended for the cleanest demo), OR
-- **Node.js 20+**, **Go 1.24+ with `GOTOOLCHAIN=auto`**, **OpenSSL 3+** for running locally
+- **Node.js 20+**, **Go 1.25.5 with `GOTOOLCHAIN=auto`**, **OpenSSL 3+** for running locally
 - An **`ANTHROPIC_API_KEY`** — or set `PEERLANE_MOCK_LLM=1` for deterministic offline responses
+
+Tested against Gensyn AXL commit:
+
+```text
+9cba555ff0b8e14ebf1244ae02b274fbc4ec044e
+```
 
 ---
 
@@ -125,11 +131,12 @@ Output Directory: dist
 ```
 
 Important: the Vercel preview does not run the four AXL nodes, `/task`, `/ws`,
-or the Docker mesh. For the real demo/proof, record the local flow:
+or the Docker mesh. It is useful for showing the UI and loading a recorded AXL
+proof. For the real demo/proof, record the local flow:
 
 ```bash
 colima start
-env -u ANTHROPIC_API_KEY ./scripts/smoke-test.sh
+PEERLANE_MOCK_LLM=1 ./scripts/smoke-test.sh
 docker compose up
 ```
 
@@ -188,14 +195,14 @@ peerlane/
 │   └── node-config-*.json   # one AXL config per role
 ├── docs/
 │   ├── ARCHITECTURE.md      # diagrams + message schema
-│   └── DEMO.md              # 90-second demo script
+│   └── DEMO.md              # 3-minute demo walkthrough
 ├── Dockerfile               # agent image (builds AXL + TS)
 ├── docker-compose.yml       # 4 agent containers + frontend + shared volume
 └── README.md
 ```
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for diagrams and message
-schemas, and [`docs/DEMO.md`](docs/DEMO.md) for the 90-second demo walkthrough.
+schemas, and [`docs/DEMO.md`](docs/DEMO.md) for the 3-minute demo walkthrough.
 
 ---
 
@@ -248,6 +255,18 @@ For an end-to-end automated proof, run:
 PEERLANE_MOCK_LLM=1 ./scripts/smoke-test.sh
 ```
 
+## Why AXL matters
+
+A normal multi-agent app keeps every worker behind one server. That hides the
+trust boundary: users can see one backend result, but not which agent identity
+created each piece of work.
+
+Peerlane separates the workers into independent AXL nodes. Coord starts the
+route, research forwards to verify directly, verify can negotiate with research
+directly, and analyst returns the final answer to coord. The proof is visible
+in the UI: distinct pubkeys, direct message ids, A2A Agent Cards, MCP tool
+intent, Docker logs, registry state, and AXL topology.
+
 ## Why this wins Gensyn
 
 - **AXL is the transport, not a checkbox.** Four independent AXL nodes exchange
@@ -293,6 +312,18 @@ Each role runs as a separate OS process with its own:
 
 Running `ps aux | grep -E "axl-node|node dist"` during operation will
 show 8 distinct processes.
+
+## Clean submission archive
+
+Prefer the GitHub repo for ETHGlobal submission. If a zip is needed, create it
+from tracked files only:
+
+```bash
+./scripts/make-submission-zip.sh
+```
+
+Do not upload local `node_modules/`, `dist/`, `.vercel/`, `.env`, `.git/`,
+`.DS_Store`, or `__MACOSX/` artifacts.
 
 ---
 

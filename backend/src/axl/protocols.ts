@@ -83,13 +83,14 @@ export function attachProtocol(
   message: PeerlaneMessage,
   capability: CapabilityId,
   text: string,
+  mcpToolOverride?: string,
 ): PeerlaneMessage {
   return {
     ...message,
     protocol: {
       binding: AXL_A2A_BINDING,
       a2a: makeA2AMessage(message, capability, text),
-      mcp: makeMcpToolUse(capability, text),
+      mcp: makeMcpToolUse(capability, text, mcpToolOverride),
     },
   };
 }
@@ -129,10 +130,10 @@ function makeA2AMessage(
   };
 }
 
-function makeMcpToolUse(capability: CapabilityId, text: string): McpToolUse {
+function makeMcpToolUse(capability: CapabilityId, text: string, toolNameOverride?: string): McpToolUse {
   return {
     protocol: "mcp",
-    toolName: capabilityToTool(capability),
+    toolName: toolNameOverride ?? capabilityToTool(capability),
     arguments: {
       input: text,
       capability,
