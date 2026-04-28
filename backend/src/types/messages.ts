@@ -15,6 +15,8 @@ export type CapabilityId =
 export type MessageType =
   | "DISPATCH"   // coord → worker: "do subtask X"
   | "RETURN"     // worker → coord: "here is my result"
+  | "CLARIFY"    // worker → worker: "please clarify evidence"
+  | "CLARIFY_RESPONSE"
   | "ACK"        // acknowledgment
   | "GOSSIP"     // worker → peers: intermediate result broadcast
   | "ERROR";     // worker failed
@@ -124,11 +126,23 @@ export interface DispatchPayload {
   context?: string;
   // Previous findings from other agents, so workers can build on each other.
   priorFindings?: Partial<Record<NodeId, string>>;
+  clarifications?: Partial<Record<NodeId, string>>;
   // Remaining direct peer-to-peer hops after the current worker finishes.
   route?: ChainHop[];
   // Contributions and trace accumulated by workers during a chained run.
   contributions?: Partial<Record<NodeId, string>>;
   trace?: ChainTraceEntry[];
+}
+
+export interface ClarifyPayload {
+  question: string;
+  request: string;
+  priorFindings?: Partial<Record<NodeId, string>>;
+}
+
+export interface ClarifyResponsePayload {
+  text: string;
+  error?: string;
 }
 
 /** Worker → coord result. */

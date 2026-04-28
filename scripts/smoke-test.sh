@@ -81,7 +81,10 @@ docker compose logs --no-color coord research verify analyst | grep -E "AXL read
 echo ">>> verifying direct AXL route and gossip"
 LOGS="$(docker compose logs --no-color coord research verify analyst)"
 echo "$LOGS" | grep -E 'coord.*DISPATCH task=.*to=research'
+echo "$LOGS" | grep -E 'coord.*NATIVE_A2A probe task=.*to=research status=ok'
 echo "$LOGS" | grep -E 'research.*FORWARD sent task=.*to=verify'
+echo "$LOGS" | grep -E 'verify.*CLARIFY sent task=.*to=research'
+echo "$LOGS" | grep -E 'research.*CLARIFY_RESPONSE sent task=.*to=verify'
 echo "$LOGS" | grep -E 'verify.*FORWARD sent task=.*to=analyst'
 echo "$LOGS" | grep -E 'analyst.*RETURN sent for task='
 echo "$LOGS" | grep -E 'GOSSIP broadcast task=.*peers='

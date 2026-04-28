@@ -8,7 +8,14 @@ export type CapabilityId =
   | "verify.claims"
   | "analyst.synthesize";
 
-export type MessageType = "DISPATCH" | "RETURN" | "ACK" | "GOSSIP" | "ERROR";
+export type MessageType =
+  | "DISPATCH"
+  | "RETURN"
+  | "CLARIFY"
+  | "CLARIFY_RESPONSE"
+  | "ACK"
+  | "GOSSIP"
+  | "ERROR";
 
 export interface AgentCard {
   name: string;

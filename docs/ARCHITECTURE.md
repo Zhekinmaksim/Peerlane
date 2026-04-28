@@ -63,6 +63,13 @@ sequenceDiagram
     RAXL->>VAXL: Yggdrasil peer msg
     VAXL-->>Verify agent: GET /recv
 
+    Verify agent->>VAXL: POST /send (CLARIFY → research)
+    VAXL->>RAXL: Yggdrasil peer msg
+    RAXL-->>Research agent: GET /recv
+    Research agent->>RAXL: POST /send (CLARIFY_RESPONSE → verify)
+    RAXL->>VAXL: Yggdrasil peer msg
+    VAXL-->>Verify agent: GET /recv
+
     Verify agent->>VAXL: POST /send (DISPATCH → analyst)<br/>with verified findings
     VAXL->>AAXL: Yggdrasil peer msg
     AAXL-->>Analyst agent: GET /recv
@@ -117,6 +124,16 @@ Workers also emit `GOSSIP` messages after each step. These broadcasts carry the
 intermediate result and MCP tool metadata to other peers, while the main route
 continues peer-to-peer.
 
+Before the main route starts, coord sends a native AXL `/a2a/{peer_id}` probe to
+the selected research peer. Research hosts a minimal A2A JSON-RPC endpoint on
+its side of the AXL bridge, so the project demonstrates both:
+
+- raw AXL `/send` + `/recv` for inspectable task routing; and
+- AXL's native A2A bridge for a protocol-level capability probe.
+
+The A2A probe is intentionally non-blocking for user value: if a future AXL
+environment does not expose `/a2a`, the raw AXL workflow can still run.
+
 ## Message envelope
 
 Every AXL payload in Peerlane is a JSON-encoded `PeerlaneMessage`:
@@ -129,7 +146,7 @@ interface PeerlaneMessage {
   parentMid?: string;       // reply chain
   from: NodeId;             // "coord" | "research" | "verify" | "analyst"
   to: NodeId;
-  type: "DISPATCH" | "RETURN" | "ACK" | "GOSSIP" | "ERROR";
+  type: "DISPATCH" | "RETURN" | "CLARIFY" | "CLARIFY_RESPONSE" | "ACK" | "GOSSIP" | "ERROR";
   verb: string;             // e.g. "gather_sources", "cross_reference"
   payload: unknown;         // shape depends on type
   protocol?: {

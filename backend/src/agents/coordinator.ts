@@ -17,6 +17,7 @@
 
 import http from "node:http";
 import { AxlClient, pollRecv } from "../axl/client.js";
+import { buildCryptoSourceContext } from "../context/sources.js";
 import {
   registerSelf,
   waitForAllPeers,
@@ -119,7 +120,21 @@ class Coordinator {
       const key = `${msg.taskId}:${msg.from}`;
       const pending = this.pending.get(key);
       if (!pending) {
-        log("no pending promise for", key);
+        const fallback = Array.from(this.pending.entries())
+          .find(([, p]) => p.taskId === msg.taskId);
+        if (!fallback) {
+          log("no pending promise for", key);
+          return;
+        }
+        const [fallbackKey, fallbackPending] = fallback;
+        log(`fallback pending ${fallbackKey} resolved by ${msg.from}`);
+        clearTimeout(fallbackPending.timeout);
+        this.pending.delete(fallbackKey);
+        if (msg.type === "ERROR") {
+          fallbackPending.reject(new Error((msg.payload as ReturnPayload).error ?? "worker error"));
+        } else {
+          fallbackPending.resolve(msg.payload as ReturnPayload);
+        }
         return;
       }
       clearTimeout(pending.timeout);
@@ -170,7 +185,9 @@ class Coordinator {
     replyPromise.catch(() => undefined);
 
     try {
-      await this.axl.send(peerPubkey, msg);
+      await sendWithRetry(this.axl, peerPubkey, msg, (attempt, err) => {
+        log(`RETRY dispatch to=${to} attempt=${attempt}:`, err.message);
+      });
       const result = await replyPromise;
       return result;
     } catch (err) {
@@ -199,6 +216,7 @@ class Coordinator {
     const taskId = crypto.randomUUID().slice(0, 8);
     const ts = () => new Date().toISOString();
     const route = this.planRoute();
+    const sourceContext = await buildCryptoSourceContext(question);
 
     this.hub.broadcast({ kind: "task_started", taskId, question, ts: ts() });
 
@@ -215,9 +233,11 @@ class Coordinator {
     let analystResult: ReturnPayload;
     try {
       const [firstHop, ...remainingRoute] = route;
+      await this.probeNativeA2A(taskId, firstHop.node);
       analystResult = await this.dispatch(taskId, firstHop.node, firstHop.verb, {
         question,
         capability: firstHop.capability,
+        context: sourceContext.summary,
         route: remainingRoute,
       }, route[route.length - 1].node);
 
@@ -278,6 +298,61 @@ class Coordinator {
       route.map((hop) => `${hop.node}:${hop.capability}`).join(" -> "));
     return route;
   }
+
+  private async probeNativeA2A(taskId: string, to: Exclude<NodeId, "coord">): Promise<void> {
+    const peerPubkey = lookupPubkey(this.registry, to);
+    const request = {
+      jsonrpc: "2.0",
+      method: "message/send",
+      id: `native-a2a-${taskId}`,
+      params: {
+        message: {
+          role: "user",
+          parts: [{
+            kind: "text",
+            text: JSON.stringify({
+              service: "peerlane",
+              request: {
+                jsonrpc: "2.0",
+                method: "tools/list",
+                id: 1,
+                params: {},
+              },
+            }),
+          }],
+          messageId: `native-a2a-${taskId}`,
+        },
+      },
+    };
+
+    const emitProbeTrace = (ok: boolean, error?: string) => {
+      const ts = new Date().toISOString();
+      this.hub.broadcast({
+        kind: "message",
+        message: attachProtocol({
+          v: 1,
+          mid: crypto.randomUUID(),
+          taskId,
+          from: "coord",
+          to,
+          type: "ACK",
+          verb: "native_a2a_probe",
+          payload: { ok, error },
+          ts,
+        }, "task.entrypoint", ok ? "native AXL A2A probe ok" : `native AXL A2A probe failed: ${error ?? "unknown"}`),
+      });
+    };
+
+    try {
+      await this.axl.a2a(peerPubkey, request);
+      log(`NATIVE_A2A probe task=${taskId} to=${to} status=ok`);
+      emitProbeTrace(true);
+    } catch (err) {
+      const message = (err as Error).message;
+      log(`NATIVE_A2A probe task=${taskId} to=${to} status=failed:`, message);
+      emitProbeTrace(false, message);
+    }
+  }
 }
 
 /** Naive scan for a confidence score in the verifier's free text. */
@@ -299,6 +374,29 @@ async function waitForAxlReady(axl: AxlClient, timeoutMs = 30_000): Promise<stri
 }
 
 function short(pk: string): string { return pk.length > 10 ? pk.slice(0, 8) + "…" : pk; }
+
+async function sendWithRetry(
+  axl: AxlClient,
+  peerPubkey: string,
+  message: PeerlaneMessage,
+  onRetry: (attempt: number, err: Error) => void,
+  attempts = 2,
+): Promise<void> {
+  let lastErr: Error | null = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await axl.send(peerPubkey, message);
+      return;
+    } catch (err) {
+      lastErr = err as Error;
+      if (attempt < attempts) {
+        onRetry(attempt, lastErr);
+        await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+      }
+    }
+  }
+  throw lastErr ?? new Error("send failed");
+}
 
 // ────────── HTTP + WS server ──────────
 

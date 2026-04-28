@@ -34,11 +34,20 @@ Preset prompts cover crypto/security review, token-claim verification, and
 protocol due diligence so judges can start a realistic task without inventing
 one live.
 
+The hosted frontend also has a **sample** button. It loads a recorded proof run
+without requiring the local Docker mesh, so `https://www.peerlane.xyz/` remains
+useful as a public preview even when the live AXL backend is offline.
+
 Peerlane uses AXL as a custom Agent2Agent-style binding: every inter-agent
 message still travels through AXL `/send` and `/recv`, but the application
 payload includes an A2A `message/send` structure plus MCP-style tool metadata.
 Each peer also advertises an A2A-style Agent Card with skills/capabilities in
 the registry.
+
+Coord additionally probes the first peer through AXL's native `/a2a/{peer_id}`
+bridge before starting the main `/send` route. Research runs a minimal A2A
+JSON-RPC endpoint for this probe, while the main workflow continues through
+raw AXL messages so the trace remains inspectable.
 
 Four agents:
 
@@ -57,6 +66,10 @@ proxy for the research -> verify -> analyst path.
 After each worker step, the agent also sends a lightweight `GOSSIP` broadcast
 with its intermediate result to the rest of the mesh. This makes intermediate
 state visible without handing orchestration back to the coordinator.
+
+Verify can also negotiate directly with research. If it needs one extra
+evidence-quality note, it sends `CLARIFY` to research over AXL and waits for
+`CLARIFY_RESPONSE` before forwarding to analyst.
 
 ---
 
@@ -222,6 +235,8 @@ Expected shape:
 ```text
 coord      DISPATCH task=... to=research verb="gather_sources"
 research   FORWARD sent task=... to=verify verb="cross_reference"
+verify     CLARIFY sent task=... to=research
+research   CLARIFY_RESPONSE sent task=... to=verify
 verify     FORWARD sent task=... to=analyst verb="synthesize"
 analyst    RETURN sent for task=...
 coord      inbound RETURN from=analyst task=...
@@ -241,8 +256,12 @@ PEERLANE_MOCK_LLM=1 ./scripts/smoke-test.sh
   off directly: research -> verify -> analyst.
 - **A2A/MCP-aware payloads.** Messages carry A2A `message/send` structure and
   MCP-style tool metadata while using AXL as the custom peer transport.
+- **Native AXL A2A probe.** Coord reaches research through AXL's `/a2a/{peer}`
+  bridge before the main route starts.
 - **Dynamic capability routing.** Agents advertise skills in the registry;
   coord selects peers by capability instead of hardcoding pubkeys.
+- **Peer negotiation.** Verify can ask research for clarification directly over
+  AXL before analyst synthesis.
 - **Broadcast layer.** Workers gossip intermediate results to peers, giving the
   mesh more than a single request/reply path.
 - **Judge-verifiable proof.** UI proof panel, Docker logs, registry pubkeys,

@@ -47,7 +47,11 @@ export class AxlClient {
    * The message body is a JSON-encoded PeerlaneMessage.
    */
   async send(peerPubkey: string, message: PeerlaneMessage): Promise<void> {
-    const body = JSON.stringify(message);
+    await this.sendRaw(peerPubkey, JSON.stringify(message));
+  }
+
+  /** Send raw JSON to a peer. Used for native AXL protocol envelopes. */
+  async sendRaw(peerPubkey: string, body: string): Promise<void> {
     const res = await fetch(`${this.baseUrl}/send`, {
       method: "POST",
       headers: {
@@ -60,6 +64,20 @@ export class AxlClient {
       const err = await res.text().catch(() => "");
       throw new Error(`AXL /send failed: ${res.status} ${err}`);
     }
+  }
+
+  /** Send a JSON-RPC request through AXL's native A2A bridge. */
+  async a2a<T = unknown>(peerPubkey: string, request: unknown): Promise<T> {
+    const res = await fetch(`${this.baseUrl}/a2a/${peerPubkey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => "");
+      throw new Error(`AXL /a2a failed: ${res.status} ${err}`);
+    }
+    return await res.json() as T;
   }
 
   /**

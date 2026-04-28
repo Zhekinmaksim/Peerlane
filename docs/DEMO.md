@@ -86,10 +86,17 @@ Point to the gossip count.
 > "Workers also gossip intermediate results to peers. The main route stays
 > direct, but the mesh gets broadcast state after each step."
 
+Point to the clarify rows if visible.
+
+> "Verify can also negotiate directly with research. It sends a clarify request
+> over AXL, gets a response, and only then forwards the verified result to
+> analyst."
+
 If asked to prove it from the terminal:
 
 ```bash
 docker compose logs --no-color coord research verify analyst | rg 'DISPATCH|FORWARD|RETURN|inbound'
+docker compose logs --no-color coord research verify analyst | rg 'NATIVE_A2A|CLARIFY|GOSSIP'
 docker compose exec -T coord curl -fsS http://127.0.0.1:9002/topology
 docker compose exec -T coord cat /data/registry/mesh-registry.json
 ```

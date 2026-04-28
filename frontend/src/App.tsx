@@ -8,6 +8,14 @@ import type {
   PipelineStep,
   WsEvent,
 } from "./types";
+import {
+  SAMPLE_CONFIDENCE,
+  SAMPLE_CONTRIBS,
+  SAMPLE_LOG,
+  SAMPLE_PIPE,
+  SAMPLE_RESULT,
+  SAMPLE_TOPOLOGY,
+} from "./sampleProof";
 import { postTask, useWs } from "./useWs";
 
 /*
@@ -263,6 +271,24 @@ export default function Peerlane() {
     setTimeout(() => setProofCopied(false), 1500);
   };
 
+  const loadSampleProof = () => {
+    setInput(SAMPLE_PIPE.text);
+    setRunning(false);
+    setError(null);
+    setPipe(SAMPLE_PIPE);
+    setLog(SAMPLE_LOG);
+    setContribs(SAMPLE_CONTRIBS);
+    setResult(SAMPLE_RESULT);
+    setConfidence(SAMPLE_CONFIDENCE);
+    setBusy(new Set());
+    setTopology((prev) => ({
+      ...prev,
+      ...SAMPLE_TOPOLOGY,
+    }));
+    setShowTrace(true);
+    setViewMode("proof");
+  };
+
   return (
     <div style={{
       width: "100%", height: "100vh", background: "var(--c-bg)", color: "var(--c-ink)",
@@ -450,6 +476,16 @@ export default function Peerlane() {
               }}
             >
               {running ? "running…" : "run →"}
+            </button>
+            <button
+              onClick={loadSampleProof}
+              style={{
+                padding: "10px 10px", fontSize: 12, background: "var(--c-paper)",
+                color: "var(--c-ink-2)", border: "1px solid var(--c-line)", cursor: "pointer",
+              }}
+              title="Load a recorded proof for the hosted frontend preview"
+            >
+              sample
             </button>
             <button
               onClick={reset}
