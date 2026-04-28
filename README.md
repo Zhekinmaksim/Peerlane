@@ -98,6 +98,10 @@ The Vercel deployment is intended as a public preview of the Peerlane frontend.
 The full AXL mesh still runs locally through Docker Compose for the hackathon
 demo video and technical verification.
 
+Live preview:
+
+https://frontend-jade-seven-34.vercel.app
+
 Recommended Vercel settings:
 
 ```text
