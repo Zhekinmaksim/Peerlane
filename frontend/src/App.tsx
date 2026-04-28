@@ -481,13 +481,13 @@ export default function Peerlane() {
             <button
               onClick={loadSampleProof}
               style={{
-                padding: "10px 12px", fontSize: 12, background: "#fff7d6",
+                padding: "10px 9px", fontSize: 11, background: "#fff7d6",
                 color: "var(--c-ink-2)", border: "1px solid var(--c-line)", cursor: "pointer",
-                fontWeight: 800,
+                fontWeight: 700, whiteSpace: "nowrap",
               }}
               title="Load a recorded proof for the hosted frontend preview"
             >
-              sample proof
+              sample
             </button>
             <button
               onClick={reset}
