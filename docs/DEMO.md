@@ -2,6 +2,9 @@
 
 A tight walkthrough for judges. Every beat earns its time.
 
+For a subtitle-ready recording plan, see
+[`docs/DEMO_VIDEO_SCRIPT.md`](DEMO_VIDEO_SCRIPT.md).
+
 ## Pre-roll (before recording)
 
 - Terminal 1: `docker compose up` running, all 4 agents settled, "HTTP+WS listening on :8080" visible
