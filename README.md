@@ -92,6 +92,35 @@ interesting. You'll see something like:
 
 ---
 
+## Vercel frontend preview
+
+The Vercel deployment is intended as a public preview of the Peerlane frontend.
+The full AXL mesh still runs locally through Docker Compose for the hackathon
+demo video and technical verification.
+
+Recommended Vercel settings:
+
+```text
+Root Directory: frontend
+Framework Preset: Vite
+Build Command: npm run build
+Output Directory: dist
+```
+
+Important: the Vercel preview does not run the four AXL nodes, `/task`, `/ws`,
+or the Docker mesh. For the real demo/proof, record the local flow:
+
+```bash
+colima start
+env -u ANTHROPIC_API_KEY ./scripts/smoke-test.sh
+docker compose up
+```
+
+Then open `http://localhost:5173`, record the UI in Demo mode, switch to Proof
+mode, and show the trace/pubkeys/copy-proof panel.
+
+---
+
 ## Quickstart (bare metal)
 
 Use this if you want to tail logs and poke at AXL directly, or if you
