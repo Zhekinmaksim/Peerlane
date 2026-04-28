@@ -407,18 +407,19 @@ export default function Peerlane() {
         <div style={{
           width: 260, flexShrink: 0, borderRight: "1px solid var(--c-line)",
           display: "flex", flexDirection: "column", padding: "14px 14px 12px", gap: 12,
-          background: "var(--c-bg)",
+          background: "var(--c-bg)", overflowY: "auto", minHeight: 0,
         }}>
-          <span style={{ fontSize: 11, color: "var(--c-dim)", fontWeight: 500 }}>Task</span>
+          <span style={{ fontSize: 11, color: "var(--c-dim)", fontWeight: 500, flexShrink: 0 }}>Task</span>
           <textarea
             rows={5}
             placeholder="describe a task for the network"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={running}
+            style={{ minHeight: 104, flexShrink: 0 }}
           />
 
-          <div style={{ display: "grid", gap: 5 }}>
+          <div style={{ display: "grid", gap: 5, flexShrink: 0 }}>
             {PRESETS.map((preset) => (
               <button
                 key={preset.label}
@@ -439,7 +440,7 @@ export default function Peerlane() {
             ))}
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
             <span style={{ fontSize: 11, color: "var(--c-dim)", flexShrink: 0 }}>wf</span>
             <div style={{ display: "flex", gap: 0, flex: 1 }}>
               {WORKFLOWS.map((w, i) => (
@@ -463,7 +464,7 @@ export default function Peerlane() {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 6, marginTop: "auto" }}>
+          <div style={{ display: "flex", gap: 6, marginTop: "auto", flexShrink: 0 }}>
             <button
               onClick={run}
               disabled={running || !input.trim() || !connected}
@@ -503,7 +504,7 @@ export default function Peerlane() {
             <>
               <div style={{
                 marginTop: 4, paddingTop: 10, borderTop: "1px solid var(--c-line-soft)",
-                fontSize: 11, color: "var(--c-dim)", lineHeight: 1.8,
+                fontSize: 11, color: "var(--c-dim)", lineHeight: 1.8, flexShrink: 0,
               }}>
                 <div style={{ color: "var(--c-ink-2)", marginBottom: 4, fontWeight: 500 }}>topology</div>
                 route <span style={{ color: "var(--c-ink)" }}>coord → research → verify → analyst → coord</span><br />
@@ -515,7 +516,7 @@ export default function Peerlane() {
 
               <div style={{
                 paddingTop: 10, borderTop: "1px solid var(--c-line-soft)",
-                fontSize: 10.5, color: "var(--c-dim)", lineHeight: 1.7,
+                fontSize: 10.5, color: "var(--c-dim)", lineHeight: 1.7, flexShrink: 0,
               }}>
                 <div style={{ color: "var(--c-ink-2)", marginBottom: 5, fontWeight: 500 }}>node identity</div>
                 {NODES.map((n) => (
@@ -536,7 +537,7 @@ export default function Peerlane() {
           ) : (
             <div style={{
               marginTop: 4, paddingTop: 10, borderTop: "1px solid var(--c-line-soft)",
-              fontSize: 11, color: "var(--c-dim)", lineHeight: 1.8,
+              fontSize: 11, color: "var(--c-dim)", lineHeight: 1.8, flexShrink: 0,
             }}>
               <div style={{ color: "var(--c-ink-2)", marginBottom: 4, fontWeight: 500 }}>route</div>
               <span style={{ color: "var(--c-ink)" }}>coord → research → verify → analyst → coord</span><br />
