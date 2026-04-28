@@ -12,6 +12,11 @@ export function useWs(onEvent: (ev: WsEvent) => void): { connected: boolean } {
   handlerRef.current = onEvent;
 
   useEffect(() => {
+    if (!shouldConnectWs()) {
+      setConnected(false);
+      return;
+    }
+
     let ws: WebSocket | null = null;
     let retry = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -60,6 +65,12 @@ export function useWs(onEvent: (ev: WsEvent) => void): { connected: boolean } {
   }, []);
 
   return { connected };
+}
+
+function shouldConnectWs(): boolean {
+  const localHost = ["localhost", "127.0.0.1"].includes(location.hostname);
+  const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
+  return localHost || env?.VITE_PEERLANE_ENABLE_HOSTED_WS === "1";
 }
 
 /** POST a task to the coord HTTP API. Errors surface to caller. */

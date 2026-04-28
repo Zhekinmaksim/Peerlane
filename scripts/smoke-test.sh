@@ -27,7 +27,7 @@ if [ ! -f .env ]; then
 fi
 
 echo ">>> starting docker compose in mock LLM mode"
-ANTHROPIC_API_KEY= PEERLANE_MOCK_LLM=1 docker compose up -d --build
+ANTHROPIC_API_KEY= PEERLANE_MOCK_LLM=1 docker compose up -d --build --force-recreate
 
 echo ">>> waiting for coord healthcheck"
 for _ in $(seq 1 60); do
